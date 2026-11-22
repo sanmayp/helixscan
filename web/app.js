@@ -68,6 +68,11 @@ function progressState(snapshot) {
       $('rate').textContent = (snapshot.result.file_size / snapshot.result.report.elapsed_seconds / 1e9).toFixed(3);
       $('elapsed').textContent = `${snapshot.result.report.elapsed_seconds.toFixed(1)} s`;
     }
+    if (snapshot.state === 'complete' && !completedOnScan && !window.location.pathname.startsWith('/reports/')) {
+      completedOnScan = true;
+      window.location.assign(reportUrl);
+      return;
+    }
     if (activeId === 'show-report' || (!completedOnScan && window.location.pathname.startsWith('/reports/'))) {
       completedOnScan = true;
       lastFinished = snapshot.result.filename;
@@ -150,8 +155,8 @@ function showReport(data) {
   $('report-engine').textContent = `${r.engine} · ${r.elapsed_seconds.toFixed(3)} s${data.engine.gpu_device ? ` · ${data.engine.gpu_device}${data.engine.gpu_driver ? ` · driver ${data.engine.gpu_driver}` : ''}${data.engine.workgroup ? ` · workgroup ${data.engine.workgroup}` : ''}` : ''}${data.engine.fallback_reason ? ` · ${data.engine.fallback_reason}` : ''}`;
   const qc = [
     [number.format(r.qc.reads), 'reads'], [number.format(r.qc.bases), 'bases'],
-    [r.qc.mean_read_length.toFixed(1), 'mean bases / read'], [`${r.qc.q30_percent.toFixed(2)}%`, 'Q30 bases'],
-    [`${r.qc.gc_percent.toFixed(2)}%`, 'GC; N ' + r.qc.n_percent.toFixed(3) + '%'], [`${r.qc.panel_coverage.toFixed(1)}%`, 'panel coverage']
+    [r.qc.mean_len.toFixed(1), 'mean bases / read'], [`${r.qc.q30_pct.toFixed(2)}%`, 'Q30 bases'],
+    [`${r.qc.gc_pct.toFixed(2)}%`, 'GC; N ' + r.qc.n_pct.toFixed(3) + '%'], [`${r.qc.panel_coverage.toFixed(1)}%`, 'panel coverage']
   ];
   $('qc-cards').innerHTML = qc.map(([value,label]) => `<div class="glass"><strong>${value}</strong><small>${safe(label)}</small></div>`).join('');
   const samples = r.sample_checks;
@@ -178,10 +183,11 @@ function showReport(data) {
 window.loadReportById = async id => {
   activeId = 'show-report';
   reportUrl = `/reports/${encodeURIComponent(id)}/report`;
-  const [result,snapshot] = await Promise.all([
-    api(`/reports/${encodeURIComponent(id)}`),
+  const [saved,snapshot] = await Promise.all([
+    api(`/api/scans/${encodeURIComponent(id)}/report.json`),
     api(`/reports/${encodeURIComponent(id)}`),
   ]);
+  const result = saved.report_id && saved.report ? saved : {report_id:id,...snapshot.result};
   lastResult = result;
   showReport(result);
   progressState(snapshot);

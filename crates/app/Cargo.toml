@@ -20,6 +20,15 @@ futures-core = "0.3"
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
+tokio = { version = "1", features = ["io-util", "macros", "net", "process", "rt-multi-thread"] }
+
+[[test]]
+name = "saved_report_browser"
+path = "tests/saved_report_browser.rs"
+required-features = ["browser-test"]
+
+[features]
+browser-test = []
 
 [lib]
 path = "src/lib.rs"

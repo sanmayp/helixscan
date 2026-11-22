@@ -23,7 +23,7 @@ For a different fixture directory, pass `--input-dir /path/to/folder`. To allow 
 
 The scan CLI also accepts `--backend auto`, `--backend gpu`, `--gpu-index` and `--gpu-mem-mb`. Auto benchmarks the GPU candidate against CPU and retains CPU unless the entire biological result matches and GPU is faster. A forced GPU error is not silently accepted. See `bench/RESULTS.md` and `PROGRESS.md` for measured behavior and limits.
 
-A 60-second 20 GB walkthrough is in [`docs/DEMO.md`](docs/DEMO.md). The fixtures under `bench/data/` are gitignored and must be generated or retained locally; they are not included in a fresh Git checkout.
+A [60-second demo](docs/DEMO.md) scans a 1.27 GB synthetic FASTQ and automatically opens its report. The fixtures under `bench/data/` are gitignored and must be generated or retained locally; they are not included in a fresh Git checkout.
 
 ## Build and verify
 

@@ -94,3 +94,7 @@ Next: M7 measured benchmarks, execution instructions and the 60-second demo.
 - Final validation after all scans passed: `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo build --workspace --release`, `cargo test --workspace` (**45 tests**), `node --check web/app.js`, `node --check web/helix.js`, `sh -n helixscan-runs/run-m7-benchmarks.sh` and `git diff --check`.
 
 READY: M0–M7 are committed with reproducible offline scanning, local web/report workflow, measured backend results and documented limitations above.
+
+## H1 — complete; 60-second demo saved-report rendering verified
+
+- The four-worker, 1,273,289,704-byte simulated FASTQ demo scan measured **12.092 seconds** with **77/77 calls and 100% panel coverage**; fixed blank saved-report rendering and verified real persisted-report values in headless Chromium, with `docs/DEMO.md` commands and 60-second shot list.

@@ -66,6 +66,9 @@ export async function createHelix(container) {
   });
   const dispose=()=>{stopped=true;renderer.setAnimationLoop(null);observer.disconnect();scene.traverse(object=>{if(object.geometry)object.geometry.dispose();if(object.material){if(Array.isArray(object.material))object.material.forEach(material=>material.dispose());else object.material.dispose()}});renderer.dispose();};
   window.disposeHelix = dispose;
-  return { update(value, hits) { fraction=Math.min(Math.max(value,0),1); ring.material.color.set(hits?0xf5a524:0x22d3ee); } };
+  return {
+    update(value, hits) { fraction=Math.min(Math.max(value,0),1); ring.material.color.set(hits?0xf5a524:0x22d3ee); },
+    setHit() {},
+  };
 }
 export function disposeHelix() { if(window.disposeHelix)window.disposeHelix(); }
