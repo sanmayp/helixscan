@@ -1,279 +1,223 @@
 import { createHelix, disposeHelix } from './helix.js';
+// Report rendering is integrated after the scan controller below.
 
-const $ = id => document.getElementById(id) || document.querySelector(id);
-const number = new Intl.NumberFormat();
-let selectedSize = 0;
-let selectedName = '';
-let activeId = '';
-let lastResult = null;
-let eventSource = null;
-let lastFinished = '';
-let helix = null;
-let completedOnScan = false;
-let reportUrl = '';
-let activePoll = null;
-let telemetryTimer = null;
+const $ = id => document.getElementById(id);
+const safe = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const number = new Intl.NumberFormat(undefined, {maximumFractionDigits: 0});
+const compact = new Intl.NumberFormat(undefined, {notation: 'compact', maximumFractionDigits: 1});
+const RECENT_KEY = 'helixscan.recent.v1';
+export const DISCLAIMER = 'Research and education only. Not a medical diagnosis. Talk to a doctor or genetic counselor about any result.';
+let selectedName = '', selectedSize = 0, activeId = '', lastResult = null, reportUrl = '';
+let eventSource = null, pollTimer = null, telemetryTimer = null, completedOnScan = false;
+let helix = null, logicalCores = 0, recentReports = readRecent();
 
-function setHidden(id, hidden) { $(id).hidden = hidden; }
-function safe(value) {
-  return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function readRecent() {
+  try {const data=JSON.parse(localStorage.getItem(RECENT_KEY));return Array.isArray(data)?data.slice(0,8):[];} catch {return [];}
 }
+function rememberReport(data) {
+  if(!data?.report_id || !data.report) return;
+  recentReports=[{id:data.report_id,filename:data.filename,elapsed_seconds:data.report.elapsed_seconds,openedAt:Date.now()},...recentReports.filter(r=>r.id!==data.report_id)].slice(0,8);
+  try {localStorage.setItem(RECENT_KEY,JSON.stringify(recentReports));} catch { /* Storage can be disabled; the current view still works. */ }
+  renderRecent();
+}
+function renderRecent() {
+  const html=recentReports.length?recentReports.map(r=>`<a class="recent-report" href="/reports/${encodeURIComponent(r.id)}/report"><span class="recent-file-icon"><svg><use href="#i-report"/></svg></span><span><strong>${safe(r.filename)}</strong><small>Opened recently · ${formatTime(r.elapsed_seconds)}</small></span><svg class="recent-arrow"><use href="#i-arrow"/></svg></a>`).join(''):'<p class="recent-empty">Your completed reports will appear here.</p>';
+  $('recent-reports').innerHTML=html;
+  $('mobile-recent-reports').innerHTML=html;
+  $('recent-count').textContent=recentReports.length?String(recentReports.length).padStart(2,'0'):'';
+}
+function formatTime(seconds=0) {const n=Math.max(0,Number(seconds)||0);return `${String(Math.floor(n/60)).padStart(2,'0')}:${String(Math.floor(n%60)).padStart(2,'0')}`;}
 function size(bytes) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KiB`;
-  if (bytes < 1073741824) return `${(bytes / 1048576).toFixed(1)} MiB`;
-  return `${(bytes / 1073741824).toFixed(2)} GB`;
+  if(bytes<1024)return `${bytes} B`;
+  if(bytes<1048576)return `${(bytes/1024).toFixed(1)} KiB`;
+  if(bytes<1073741824)return `${(bytes/1048576).toFixed(1)} MiB`;
+  return `${(bytes/1073741824).toFixed(2)} GB`;
 }
-async function api(path, options) {
-  const response = await fetch(path, options);
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+async function api(path, options={}) {
+  const response=await fetch(path,options);
+  const type=response.headers.get('content-type')||'';
+  const data=type.includes('json')?await response.json():{error:await response.text()};
+  if(!response.ok)throw new Error(data.error||`Request failed (${response.status})`);
   return data;
 }
-function progressState(snapshot) {
-  if (!snapshot) return;
-  const elapsed = Math.max(snapshot.elapsed_seconds, 0.001);
-  const rate = snapshot.bytes / elapsed / 1e9;
-  $('rate').textContent = rate.toFixed(3);
-  $('reads').textContent = number.format(snapshot.reads);
-  $('bases').textContent = number.format(snapshot.bases);
-  $('elapsed').textContent = `${snapshot.elapsed_seconds.toFixed(1)} s`;
-  $('workers').textContent = `1 / ${snapshot.threads}`;
-  const fraction = snapshot.total_bytes ? Math.min(snapshot.bytes / snapshot.total_bytes, 1) : 0;
-  $('progress-fill').style.width = `${fraction * 100}%`;
-  $('progress-label').textContent = snapshot.state === 'complete' ? 'Scan complete' : `${(fraction * 100).toFixed(1)}% · ${number.format(snapshot.bytes)} / ${number.format(snapshot.total_bytes)} bytes`;
-  $('eta').textContent = fraction > 0 && fraction < 1 ? `ETA ${((snapshot.total_bytes - snapshot.bytes) * elapsed / snapshot.bytes).toFixed(1)} s` : '—';
-  $('helix-status').className = `status ${snapshot.state}`;
-  $('helix-status').innerHTML = `<i></i>${snapshot.state === 'running' ? 'Scanning reads' : snapshot.state === 'complete' ? 'Analysis complete' : 'Scan failed'}`;
-  if (helix) helix.update(fraction, snapshot.hits.length);
-  const hits = snapshot.hits || [];
-  $('hit-count').textContent = `${hits.length} marker${hits.length === 1 ? '' : 's'}`;
-  $('empty-hits').hidden = hits.length > 0;
-  $('hits').innerHTML = hits.map(hit => {
-    const max = Math.max(hit.ref_votes + hit.alt_votes, 1);
-    return `<div class="hit"><div class="hit-title"><a href="https://www.ensembl.org/Homo_sapiens/Variation/Explore?v=${encodeURIComponent(hit.rsid)}" target="_blank" rel="noopener">${safe(hit.gene)}</a><small>${safe(hit.rsid)}</small></div><div class="hit-details">${hit.ref_votes} ref / ${hit.alt_votes} alt · ${max} depth</div><div class="hit-bar"><i class="ref" style="width:${hit.ref_votes / max * 100}%"></i><i class="alt" style="width:${hit.alt_votes / max * 100}%"></i></div></div>`;
+function backend() {return document.querySelector('input[name="backend"]:checked')?.value||'auto';}
+function setScanning(running) {
+  document.body.classList.toggle('scan-running',running);
+  for(const element of [$('file-input'),$('threads'),$('cores-minus'),$('cores-plus'),...document.querySelectorAll('input[name="backend"]')])element.disabled=running;
+  document.querySelector('.upload-control').classList.toggle('disabled',running);
+  $('upload').disabled=running;
+  $('stop').hidden=!running;
+  $('start').disabled=running||!selectedName;
+  $('start').querySelector('span').textContent=running?'Scanning…':'Start scan';
+}
+function updateFile(option) {
+  selectedName=option?.value||'';selectedSize=Number(option?.dataset.size||0);
+  $('selected-file').textContent=selectedName||'No input selected';
+  $('file-size').textContent=selectedName?size(selectedSize):'Choose a FASTQ file';
+  $('file-format').textContent=selectedName?` · FASTQ${selectedName.endsWith('.gz')?' (gzip)':''}`:'';
+  $('start').disabled=!selectedName||Boolean(activeId);
+}
+function showHit(gene, rsid, ref, alt) {
+  const total=ref+alt, percent=total?alt/total*100:0;
+  $('hit-detail').innerHTML=`<span class="eyebrow">LIVE SEQUENCE EVIDENCE</span><h2>${safe(gene)} <span class="gene-rsid">${safe(rsid)}</span></h2><div class="hit-pop-stats"><div><span>Reference reads</span><strong>${number.format(ref)}</strong></div><div><span>Alternate reads</span><strong class="${alt?'orange':''}">${number.format(alt)}</strong></div><div><span>Depth</span><strong>${number.format(total)}</strong></div></div><div><span class="eyebrow">ALT SHARE</span><strong class="hit-alt-percent">${percent.toFixed(1)}%</strong><div class="hit-pop-bar"><i style="width:${percent}%"></i></div></div><p class="evidence-note">Live supporting reads from this scan. Open the completed report for genotype, confidence and published findings.</p>`;
+  $('hit-dialog').showModal();
+}
+function updateHits(hits) {
+  $('hit-count').textContent=`${hits.length} genes with reads`;
+  $('empty-hits').hidden=hits.length>0;
+  $('hits').innerHTML=hits.slice(0,12).map((h,i)=>{
+    const depth=h.ref_votes+h.alt_votes,altPct=depth?h.alt_votes/depth*100:0;
+    return `<button class="hit ${h.alt_votes?'has-alt':''}" data-hit="${i}"><span class="hit-gene">${safe(h.gene)}<small>${safe(h.rsid)}</small></span><span class="hit-evidence"><span class="hit-bar"><i class="ref" style="width:${depth?h.ref_votes/depth*100:0}%"></i><i class="alt" style="width:${altPct}%"></i></span><small>${number.format(h.ref_votes)} / ${number.format(h.alt_votes)} <span>(${altPct.toFixed(1)}% alt)</span></small></span><strong>${compact.format(depth)}</strong></button>`;
   }).join('');
-  if (hits.length) {
-    $('gene-tag').textContent = `${hits[hits.length - 1].gene} · ${hits[hits.length - 1].rsid}`;
-    $('gene-tag').classList.add('hit');
-    if (helix) helix.setHit(`${hits[hits.length - 1].gene} · ${hits[hits.length - 1].rsid}`);
-  }
-  if (snapshot.result) {
-    $('device').textContent = snapshot.result.engine.gpu_device || snapshot.result.report.engine;
-    $('fallback').textContent = snapshot.result.engine.fallback_reason || '';
-    lastResult = snapshot.result;
-    setHidden('report-tab', false);
-    $('open-report').classList.remove('hidden');
-    if (snapshot.state === 'complete') {
-      $('rate').textContent = (snapshot.result.file_size / snapshot.result.report.elapsed_seconds / 1e9).toFixed(3);
-      $('elapsed').textContent = `${snapshot.result.report.elapsed_seconds.toFixed(1)} s`;
+  $('hits').querySelectorAll('[data-hit]').forEach(button=>button.addEventListener('click',()=>{const h=hits[Number(button.dataset.hit)];showHit(h.gene,h.rsid,h.ref_votes,h.alt_votes);}));
+  if(helix)helix.setHits(hits);
+}
+function progressState(snapshot) {
+  if(!snapshot)return;
+  const elapsed=Math.max(0,snapshot.elapsed_seconds||0);
+  const rate=elapsed?snapshot.bytes/elapsed/1e9:0;
+  $('rate').innerHTML=`${rate.toFixed(2)}<small>GB/s</small>`;
+  $('reads').textContent=compact.format(snapshot.reads||0);$('reads').title=number.format(snapshot.reads||0);
+  $('bases').textContent=compact.format(snapshot.bases||0);$('bases').title=number.format(snapshot.bases||0);
+  $('elapsed').textContent=formatTime(elapsed);
+  const fraction=snapshot.total_bytes?Math.min(snapshot.bytes/snapshot.total_bytes,1):0;
+  $('progress-fill').style.width=`${fraction*100}%`;$('progress-percent').innerHTML=`${Math.round(fraction*100)}<span>%</span>`;
+  document.querySelector('.progress-track').setAttribute('aria-valuenow',String(Math.round(fraction*100)));
+  $('bytes-progress').textContent=`${size(snapshot.bytes)} read${snapshot.total_bytes?' of '+size(snapshot.total_bytes):''}`;
+  $('eta').textContent=fraction>0&&fraction<1?`ETA ${formatTime((snapshot.total_bytes-snapshot.bytes)*elapsed/snapshot.bytes)}`:'ETA —';
+  $('scan-state').textContent=snapshot.state==='running'?'SCANNING':snapshot.state==='complete'?'COMPLETE':'READY';
+  document.body.classList.toggle('scan-running',snapshot.state==='running');
+  if(snapshot.state==='running')$('progress-label').textContent='Scanning reads…';else if(snapshot.state==='complete')$('progress-label').textContent='Your report is ready';
+  if(helix)helix.update(fraction,hitsLength(snapshot));updateHits(snapshot.hits||[]);
+  if(snapshot.result) {
+    lastResult=snapshot.result;reportUrl=`/reports/${encodeURIComponent(snapshot.result.report_id)}/report`;
+    $('open-report').disabled=false;rememberReport(snapshot.result);
+    const gpu=snapshot.result.engine?.gpu_device;
+    if(gpu)$('gpu-label').textContent=gpu;
+    $('device').textContent=snapshot.result.report.engine;
+    $('fallback').textContent=snapshot.result.engine?.fallback_reason||'';
+    if(snapshot.state==='complete'&&!completedOnScan&&!location.pathname.startsWith('/reports/')) {
+      completedOnScan=true;location.assign(reportUrl);return;
     }
-    if (snapshot.state === 'complete' && !completedOnScan && !window.location.pathname.startsWith('/reports/')) {
-      completedOnScan = true;
-      window.location.assign(reportUrl);
-      return;
-    }
-    if (activeId === 'show-report' || (!completedOnScan && window.location.pathname.startsWith('/reports/'))) {
-      completedOnScan = true;
-      lastFinished = snapshot.result.filename;
-      showReport(snapshot.result);
-    }
-  } else if (snapshot.error) {
-    $('progress-label').textContent = snapshot.error;
-    $('start').disabled = false;
-    $('start').textContent = 'Retry scan →';
+    if(location.pathname.startsWith('/reports/')&&activeId==='show-report')showReport(snapshot.result);
+  } else if(snapshot.error) {
+    $('progress-label').textContent=snapshot.error;setScanning(false);
   }
 }
+function hitsLength(snapshot) {return snapshot.hits?.length||0;}
 async function scan() {
-  if (!selectedName || activeId) return;
-  activeId = 'starting';
-  $('start').disabled = true;
-  $('start').textContent = 'Starting scan…';
-  $('progress-label').textContent = 'Preparing panel and input';
-  $('fallback').textContent = '';
-  lastResult = null;
-  completedOnScan = false;
-  setHidden('report-tab', true);
-  $('gene-tag').textContent = 'Awaiting sequence evidence';
-  $('gene-tag').classList.remove('hit');
-  if (helix) helix.setHit('');
-  $('hits').innerHTML = '';
-  $('empty-hits').hidden = false;
-  $('helix-status').className = 'status running';
-  $('helix-status').innerHTML = '<i></i>Scanning reads';
+  if(!selectedName||activeId)return;
+  activeId='starting';completedOnScan=false;lastResult=null;reportUrl='';
+  setScanning(true);$('open-report').disabled=true;
+  $('scan-state').textContent='SCANNING';$('progress-label').textContent='Preparing your sequence…';
+  updateHits([]);if(helix){helix.update(0,0);helix.setHits([]);}
   try {
-    const created = await api('/api/scans', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({input:selectedName,backend:$('backend').value,threads:Number($('threads').value),gpu_mem_mb:2048})});
-    activeId = created.id;
-    reportUrl = created.report_url;
-    $('start').textContent = 'Scan in progress…';
-    eventSource = new EventSource(`/api/scans/${activeId}/events`);
-    eventSource.addEventListener('progress', event => {
-      const snapshot = JSON.parse(event.data);
-      progressState(snapshot);
-      if (snapshot.state !== 'running') {
-        eventSource.close();
-        eventSource = null;
-        activeId = '';
-        $('start').disabled = false;
-        $('start').textContent = 'Scan again →';
-      }
+    const created=await api('/api/scans',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({input:selectedName,backend:backend(),threads:Number($('threads').value),gpu_mem_mb:2048})});
+    activeId=created.id;reportUrl=created.report_url;
+    eventSource=new EventSource(`/api/scans/${activeId}/events`);
+    eventSource.addEventListener('progress',event=>{
+      const snapshot=JSON.parse(event.data);progressState(snapshot);
+      if(snapshot.state!=='running')finishStream();
     });
-    eventSource.onerror = () => {
-      if (eventSource) eventSource.close();
-      eventSource = null;
-      pollSnapshot();
-    };
-  } catch(error) {
-    $('progress-label').textContent = error.message;
-    $('start').disabled = !selectedName;
-    $('start').textContent = 'Retry scan →';
-    activeId = '';
-  }
+    eventSource.onerror=()=>{closeStream();pollSnapshot();};
+  } catch(error) {activeId='';setScanning(false);$('progress-label').textContent=error.message;$('scan-state').textContent='ERROR';}
 }
+function closeStream() {if(eventSource){eventSource.close();eventSource=null;}}
+function finishStream() {closeStream();activeId='';setScanning(false);}
 async function pollSnapshot() {
-  if (!activeId || activeId === 'starting' || activePoll) return;
+  if(!activeId||activeId==='starting'||pollTimer)return;
   try {
-    const snapshot = await api(`/api/scans/${activeId}`);
-    progressState(snapshot);
-    if (snapshot.state !== 'running') {
-      activeId = '';
-      $('start').disabled = false;
-      $('start').textContent = 'Scan again →';
-    } else activePoll = setTimeout(() => {activePoll=null;pollSnapshot()}, 250);
-  } catch(error) {
-    activeId = '';
-    $('progress-label').textContent = error.message;
-    $('start').disabled = false;
-  }
+    const snapshot=await api(`/api/scans/${activeId}`);progressState(snapshot);
+    if(snapshot.state!=='running')finishStream();else pollTimer=setTimeout(()=>{pollTimer=null;pollSnapshot();},250);
+  } catch(error) {finishStream();$('progress-label').textContent=error.message;}
 }
 function showReport(data) {
-  lastResult = data;
-  const r = data.report;
-  setHidden('scan-page', true);
-  setHidden('report-page', false);
-  $('report-file').textContent = `${data.filename} · ${size(data.file_size)}`;
-  $('report-engine').textContent = `${r.engine} · ${r.elapsed_seconds.toFixed(3)} s${data.engine.gpu_device ? ` · ${data.engine.gpu_device}${data.engine.gpu_driver ? ` · driver ${data.engine.gpu_driver}` : ''}${data.engine.workgroup ? ` · workgroup ${data.engine.workgroup}` : ''}` : ''}${data.engine.fallback_reason ? ` · ${data.engine.fallback_reason}` : ''}`;
-  const qc = [
-    [number.format(r.qc.reads), 'reads'], [number.format(r.qc.bases), 'bases'],
-    [r.qc.mean_len.toFixed(1), 'mean bases / read'], [`${r.qc.q30_pct.toFixed(2)}%`, 'Q30 bases'],
-    [`${r.qc.gc_pct.toFixed(2)}%`, 'GC; N ' + r.qc.n_pct.toFixed(3) + '%'], [`${r.qc.panel_coverage.toFixed(1)}%`, 'panel coverage']
-  ];
-  $('qc-cards').innerHTML = qc.map(([value,label]) => `<div class="glass"><strong>${value}</strong><small>${safe(label)}</small></div>`).join('');
-  const samples = r.sample_checks;
-  $('sample-checks').innerHTML = `<div class="sample-check"><h3>Genetic sex: ${safe(samples.sex.classification)}</h3><p>${safe(samples.sex.evidence)}</p><p>${samples.sex.y_reads_per_million.toFixed(1)} Y marker reads / million; ${samples.sex.control_reads_per_million.toFixed(1)} control / million</p></div><div class="sample-check"><h3>Telomere DNA</h3><p>${samples.telomere.telomeric_reads} evidence reads; ${samples.telomere.reads_per_million.toFixed(1)} / million; index ${samples.telomere.length_adjusted_index.toFixed(3)}.</p><p>${safe(samples.telomere.message)}</p></div><div class="sample-check"><h3>Ancestry similarity</h3><p>${safe(samples.ancestry_summary)}</p>${(()=>{const min=Math.min(...samples.ancestry.map(p=>p.log_likelihood),0);return samples.ancestry.map(p=>`<div class="ancestry-bar" title="${safe(p.population)}: ${p.log_likelihood.toFixed(2)} log likelihood; ${p.markers} markers"><span>${safe(p.population)}</span><div><i style="width:${Math.min(100,(p.log_likelihood-min)*2+2)}%"></i></div><span>${p.markers}</span></div>`).join('')})()}</div>`;
-  const groups = [...new Set(r.traits.map(t => t.section))];
-  $('section-nav').innerHTML = groups.map(group=>`<a href="#trait-${safe(group).replace(/\s/g,'-')}">${safe(group)}</a>`).join('');
-  $('traits').innerHTML = groups.map(group => {
-    const traits = r.traits.filter(t => t.section === group);
-    return `<div class="glass trait-card" id="trait-${safe(group).replace(/\s/g,'-')}"><h2>${safe(group)}</h2>${traits.map(t=>`<h3>${safe(t.trait_group)}</h3><p>${safe(t.message)}</p>`).join('')}</div>`;
-  }).join('');
-  $('traits').insertAdjacentHTML('beforeend', `<div class="glass trait-card"><h2>Pharmacogenetic interpretations</h2>${r.pgx.map(p=>`<h3>${safe(p.gene)} · ${safe(p.phenotype)}</h3><p>${safe(p.consult)}</p>`).join('')}</div><div class="glass trait-card"><h2>APOE haplotypes</h2><p>${safe(r.apoe.label)}${r.apoe.haplotypes.length ? ' · ' + safe(r.apoe.haplotypes.join(', ')) : ''}</p></div>`);
-  const depths = [...new Map(r.variants.filter(v => v.depth > 0)
-    .map(v => [`${v.gene} / ${v.rsid}`,v.depth])).entries()];
-  const maxDepth = Math.max(...depths.map(([,depth])=>depth),1);
-  $('depth-chart').innerHTML = depths.map(([gene,depth]) =>
-    `<div class="depth-item"><span>${safe(gene)}</span><div><i style="width:${depth/maxDepth*100}%"></i></div><strong>${depth}</strong></div>`
-  ).join('') || '<p class="no-data">No variants met the minimum coverage.</p>';
-  $('variant-rows').innerHTML = r.variants.map(v => {
-    const evidence = v.evidence.map(p=>`${safe(p.trait_text)}${p.p_value ? ` · p ${safe(p.p_value)}` : ''}${p.pmid ? ` <a href="https://pubmed.ncbi.nlm.nih.gov/${encodeURIComponent(p.pmid)}/" target="_blank" rel="noopener">PMID ${safe(p.pmid)}</a>` : ''}${p.source ? ` · ${safe(p.source)}` : ''}`).join('<br>');
-    return `<tr><td><strong>${safe(v.gene)}</strong><br><small>${safe(v.rsid)}</small></td><td><span class="gt">${safe(v.called ? v.genotype : `No call · ${v.no_call_reason}`)}</span>${v.heteroplasmy !== null ? `<br><small>heteroplasmy ${v.heteroplasmy.toFixed(1)}%</small>` : ''}<br><small>${safe(v.trait_group)}</small></td><td>${v.ref_votes} / ${v.alt_votes.join(', ')}</td><td>${v.depth}</td><td>${v.gq}<div class="gq"><i style="width:${Math.min(v.gq,99)}%"></i></div></td><td><span class="risk">${safe(v.risk_allele || 'Not reported')}</span>${v.dosage !== null ? `<br><small>dosage ${v.dosage}</small>` : ''}</td><td class="evidence">${evidence || '<small>No variant-specific phenotype text returned for this marker.</small>'}</td></tr>`;
-  }).join('');
-  $('limitations').innerHTML = r.limitations.map(item=>`<li>${safe(item)}</li>`).join('');
+  if(!data?.report)throw new Error('This saved report is not available yet.');
+  lastResult=data;activeId='show-report';rememberReport(data);
+  $('scan-page').hidden=true;$('report-page').hidden=false;
+  document.body.classList.remove('scan-active','scan-running');document.body.classList.add('report-active');
+  $('scan-nav').classList.remove('active');
+  renderReport(data,$('report-page'));detailNavigation(data);
+  detailNavigation(data);
 }
-window.loadReportById = async id => {
-  activeId = 'show-report';
-  reportUrl = `/reports/${encodeURIComponent(id)}/report`;
-  const [saved,snapshot] = await Promise.all([
-    api(`/api/scans/${encodeURIComponent(id)}/report.json`),
-    api(`/reports/${encodeURIComponent(id)}`),
-  ]);
-  const result = saved.report_id && saved.report ? saved : {report_id:id,...snapshot.result};
-  lastResult = result;
-  showReport(result);
-  progressState(snapshot);
-};
-
-async function initialize() {
-  const [files, panel] = await Promise.all([api('/api/files'),api('/api/panel')]);
-  $('variant-count').textContent = panel.variants;
-  $('file-input').innerHTML = '<option value="">Choose a file…</option>' + files.map(file=>`<option value="${safe(file.name)}" data-size="${file.size}">${safe(file.name)}</option>`).join('');
-  $('file-input').addEventListener('change', () => {
-    const option = $('file-input').selectedOptions[0];
-    selectedName = $('file-input').value;
-    selectedSize = Number(option.dataset.size || 0);
-    $('file-size').textContent = selectedName ? size(selectedSize) : '—';
-    $('file-format').textContent = selectedName.endsWith('.gz') ? 'Gzip FASTQ' : selectedName ? 'FASTQ' : '—';
-    $('start').disabled = !selectedName || Boolean(activeId);
-  });
-  $('upload').addEventListener('change', async () => {
-    const file = $('upload').files[0];
-    if (!file) return;
-    $('start').disabled = true;
-    $('file-size').textContent = 'Uploading…';
-    try {
-      const body = new FormData(); body.append('file',file);
-      const uploaded = await api('/api/uploads',{method:'POST',body});
-      const option = document.createElement('option');
-      option.value = uploaded.name; option.dataset.size = uploaded.size; option.textContent = `${file.name} (uploaded)`;
-      $('file-input').append(option); $('file-input').value = uploaded.name;
-      $('file-input').dispatchEvent(new Event('change'));
-      $('progress-label').textContent = `Uploaded ${file.name}`;
-    } catch(error) { $('progress-label').textContent = error.message; }
-  });
-  $('start').addEventListener('click',scan);
-  $('reset').addEventListener('click',()=>{
-    if(eventSource) eventSource.close();
-    activeId = ''; lastResult = null;
-    $('start').textContent = 'Start scan →';
-    $('start').disabled = false;
-    $('progress-label').textContent = 'Ready for a FASTQ input';
-    $('report-tab').classList.add('hidden');
-    setHidden('report-page',true); setHidden('scan-page',false);
-    $('file-input').dispatchEvent(new Event('change'));
-  });
-  $('report-tab').addEventListener('click',()=>{if(lastResult)window.location.href=`/reports/${encodeURIComponent(lastResult.report_id)}/report`});
-  $('open-report').addEventListener('click',()=>{if(reportUrl)window.location.href=reportUrl});
-  $('back').addEventListener('click',()=>{setHidden('report-page',true);setHidden('scan-page',false)});
-  $('export').addEventListener('click',()=>{
-    const blob = new Blob([JSON.stringify(lastResult,null,2)],{type:'application/json'});
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `helixscan-${activeId || 'report'}.json`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),10000);
-  });
-  $('print').addEventListener('click',()=>window.print());
-  $('simd').textContent = 'Detecting…';
-  const drawTelemetry = async () => {
-    try {
-      const t = await api('/api/telemetry');
-      $('simd').textContent = t.simd;
-      $('workers').textContent = `${t.reader_threads} / ${t.workers}`;
-      $('gpu-util').textContent = t.gpu_busy_percent === null ? 'Unavailable' : `${t.gpu_busy_percent.toFixed(1)}%`;
-      $('cpu-bars').innerHTML = t.cpus.map((cpu,i)=>`<div title="CPU ${i}: ${cpu.toFixed(1)}%"><i style="transform:scaleY(${Math.max(cpu/100,.02)})"></i><small>${i}</small></div>`).join('');
-    } catch { $('gpu-util').textContent = 'Unavailable'; }
-  };
-  if(window.pendingReportId) {
-    const id=window.pendingReportId;
-    window.pendingReportId=null;
-    await window.loadReportById(id);
+window.loadReportById=async id=>{
+  activeId='show-report';reportUrl=`/reports/${encodeURIComponent(id)}/report`;
+  try {
+    const [saved,snapshot]=await Promise.all([api(`/api/scans/${encodeURIComponent(id)}/report.json`),api(`/reports/${encodeURIComponent(id)}`)]);
+    // Saved endpoint wraps the JobReport as { report_id, report, filename, ... }.
+    const result=saved.report_id&&saved.report.report?{...saved,snapshot}:saved.report_id&&saved.filename?saved:{report_id:id,...snapshot.result};
+    showReport(result);
+  } catch(error) {
+    $('report-page').innerHTML=`<div class="report-error"><span class="eyebrow">REPORT UNAVAILABLE</span><h1>We couldn’t open this report.</h1><p>${safe(error.message)}</p><a class="button primary" href="/">Start a new scan</a></div>`;
+    $('scan-page').hidden=true;$('report-page').hidden=false;document.body.classList.add('report-active');
   }
-  await drawTelemetry(); telemetryTimer=setInterval(async()=>{
-    if(document.hidden)return;
-    await drawTelemetry();
-  },1000);
-  $('threads').addEventListener('change',()=>{$('workers').textContent=`1 / ${$('threads').value}`});
-  window.addEventListener('pagehide',()=>{clearInterval(telemetryTimer);disposeHelix();});
+};
+function openDialog(id) {closeDetail(false);$(`${id}-dialog`).showModal();document.body.classList.remove('phone-nav-open');}
+function goScan() {
+  closeDetail(false);$('scan-page').hidden=false;$('report-page').hidden=true;
+  document.body.classList.remove('report-active');document.body.classList.add('scan-active');$('scan-nav').classList.add('active');
+  if(location.pathname!=='/')history.pushState({},'', '/');else history.replaceState({},'',location.pathname);
+}
+async function initialize() {
+  renderRecent();
+  const [files,panel]=await Promise.all([api('/api/files'),api('/api/panel')]);
+  $('variant-count').textContent=panel.variants;$('panel-markers').textContent=panel.variants;$('panel-genes').textContent=panel.genes.length;$('panel-traits').textContent=panel.searched_traits;
+  $('file-input').innerHTML='<option value="">Choose a FASTQ file…</option>'+files.map(file=>`<option value="${safe(file.name)}" data-size="${file.size}">${safe(file.name)} · ${size(file.size)}</option>`).join('');
+  $('file-input').addEventListener('change',()=>updateFile($('file-input').selectedOptions[0]));
+  $('file-input').selectedIndex=files.findIndex(file=>file.name==='demo-20gb.fastq')>=0?files.findIndex(file=>file.name==='demo-20gb.fastq')+1:files.length?1:0;
+  updateFile($('file-input').selectedOptions[0]);
+  $('upload').addEventListener('change',async()=>{
+    const file=$('upload').files[0];if(!file)return;
+    $('progress-label').textContent=`Uploading ${file.name}…`;
+    try {const body=new FormData();body.append('file',file);const uploaded=await api('/api/uploads',{method:'POST',body});$('file-input').insertAdjacentHTML('beforeend',`<option value="${safe(uploaded.name)}" data-size="${uploaded.size}">${safe(file.name)} · ${size(uploaded.size)}</option>`);$('file-input').value=uploaded.name;updateFile($('file-input').selectedOptions[0]);$('progress-label').textContent=`${file.name} is ready`;} catch(error){$('progress-label').textContent=error.message;}
+  });
+  const stepCores=delta=>{$('threads').value=Math.max(1,Math.min(Number($('threads').max),Number($('threads').value)+delta));$('threads').dispatchEvent(new Event('change'));};
+  $('cores-minus').addEventListener('click',()=>stepCores(-1));$('cores-plus').addEventListener('click',()=>stepCores(1));
+  $('threads').addEventListener('change',()=>{$('cores-output').textContent=$('threads').value;$('workers').textContent=`${$('threads').value} threads`;drawEngine();});
+  $('start').addEventListener('click',scan);$('stop').addEventListener('click',()=>{$('progress-label').textContent='This server does not support cancelling a running scan.';$('gpu-reason').textContent='Stop is unavailable for this scan engine.';});
+  $('open-report').addEventListener('click',()=>{if(reportUrl)location.href=reportUrl;});
+  $('scan-nav').addEventListener('click',event=>{if(document.body.classList.contains('report-active')){event.preventDefault();goScan();}});
+  $('reports-nav').addEventListener('click',()=>{if(innerWidth<=700)openDialog('reports');else document.querySelector('.recent').scrollIntoView({behavior:'smooth',block:'nearest'});});
+  $('about-nav').addEventListener('click',()=>openDialog('about'));$('disclaimer-link').addEventListener('click',()=>openDialog('disclaimer'));
+  $('disclaimer-text').textContent=DISCLAIMER;
+  document.querySelectorAll('dialog').forEach(dialog=>{dialog.querySelector('.dialog-close').addEventListener('click',()=>dialog.close());dialog.addEventListener('click',event=>{if(event.target===dialog){const rect=dialog.getBoundingClientRect();if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)dialog.close();}});});
+  $('cores-output').textContent=$('threads').value;
+  if(window.pendingReportId){const id=window.pendingReportId;window.pendingReportId=null;await window.loadReportById(id);}
+  await drawTelemetry();telemetryTimer=setInterval(async()=>{if(!document.hidden)await drawTelemetry();},1000);
   window.dispatchEvent(new Event('helixscan-ready'));
 }
+let lastTelemetry=null;
+function drawEngine() {
+  const t=lastTelemetry;if(!t)return;
+  const selected=backend();
+  const busy=t.gpu_busy_percent;
+  $('gpu-util').textContent=busy===null?'GPU off':`${busy.toFixed(0)}% busy`;
+  $('gpu-fill').style.width=`${busy||0}%`;
+  $('gpu-reason').textContent=busy===null?(selected==='cpu'?'You chose CPU. No GPU telemetry reported.':'No GPU utilization telemetry reported by this device.'):selected==='cpu'?'GPU telemetry only · you chose CPU.':selected==='gpu'?'GPU selected for the next scan.':'Auto: CPU is used for this file; GPU telemetry is shown for context.';
+}
+async function drawTelemetry() {
+  try {
+    const t=await api('/api/telemetry');lastTelemetry=t;logicalCores=t.cpus.length;
+    $('simd').textContent=t.simd;$('reader-threads').textContent=`${t.reader_threads} thread`;$('workers').textContent=`${t.workers} threads`;
+    $('logical-cores').textContent=`· ${logicalCores||'—'} cores`;
+    $('cpu-bars').innerHTML=(t.cpus.length?t.cpus:new Array(12).fill(0)).map((cpu,i)=>`<div title="Core ${i+1}: ${cpu.toFixed(1)}%"><i style="height:${Math.max(cpu,2)}%"></i><small>C${i+1}</small></div>`).join('');
+    drawEngine();
+  } catch {$('gpu-reason').textContent='Engine telemetry is unavailable.';$('gpu-util').textContent='GPU off';}
+}
+document.querySelectorAll('input[name="backend"]').forEach(input=>input.addEventListener('change',drawEngine));
+const loadHelix=async()=>{try{helix=await createHelix($('helix'));}catch{$('helix').innerHTML='<div class="helix-fallback"></div>';}};
+if(document.readyState==='loading')window.addEventListener('DOMContentLoaded',loadHelix,{once:true});else loadHelix();
+initialize().catch(error=>{$('progress-label').textContent=error.message;console.error(error);window.dispatchEvent(new Event('helixscan-ready'));});
+window.addEventListener('pagehide',()=>{clearInterval(telemetryTimer);clearTimeout(pollTimer);closeStream();disposeHelix();});
+export {formatTime,size,number,compact,safe,rememberReport,goScan,api};
+// Exposed read-only simulation hooks let the browser check the exact production renderer
+// with the project's saved 20 GB simulated scan, without starting a real genome scan.
+window.helixscanTest={progressState,setScanning,drawTelemetry};
 
-// A graphics failure does not prevent any scan or report operation.
-const loadHelix = async () => {
-  try { helix = await createHelix($('helix')); }
-  catch(error) { $('helix').innerHTML = '<p class="helix-loading">3D view unavailable on this browser. Live scan data remains fully available.</p>'; console.warn('Helix renderer unavailable:',error); }
-};
-// Load graphics without delaying scan controls or a saved report.
-if (document.readyState === 'loading') {
-  window.addEventListener('DOMContentLoaded', loadHelix, {once:true});
-} else loadHelix();
-initialize().catch(error => {
-  $('progress-label').textContent = error.message;
-  console.error(error);
-  window.dispatchEvent(new Event('helixscan-ready'));
-});
+// Step 2 builds the story here. Keeping its integration explicit avoids racing shared app chrome.
+function renderReport(data, container) {
+  container.innerHTML='<div class="report-loading"><span class="eyebrow">ANALYSIS COMPLETE</span><h1>Reading your genome…</h1></div>';
+}
+function detailNavigation() {}
+function closeDetail() {}
+function initPrint() {}

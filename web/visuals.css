@@ -1,4 +1,4 @@
-html{scroll-behavior:smooth}
+html{scroll-behavior:smooth}.skip-link{position:absolute;left:10px;top:-60px;padding:10px;background:var(--cyan);color:#012831;z-index:100}.skip-link:focus{top:10px}.core-summary{font-size:9px;line-height:1.7;color:var(--muted)}
 body{overflow-x:hidden}
 .depth-chart{display:flex;flex-direction:column;gap:8px}
 .depth-item{display:grid;grid-template-columns:150px 1fr 35px;align-items:center;gap:10px;font:11px monospace}
