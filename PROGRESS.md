@@ -49,3 +49,13 @@ Next: M1 verified panel builder.
 - Validation: 24 workspace tests pass, including **100.000% / 77 of 77** original simulated genotype agreement; `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace` pass.
 
 Next: M4 real AVX2 and AVX-512 encoders, parity tests and benchmark.
+
+## M4 — complete; throughput target remains open
+
+- Implemented runtime-selected scalar, AVX2 assembly, AVX-512 assembly and AVX-512 intrinsics twin encoders. SIMD encoding now feeds reusable panel, X-marker and telomere k-mer scan buffers.
+- Encoding/rolling-key parity covers lengths 0–256, arbitrary bytes, lowercase and unaligned slices, real valid keys across N boundaries, multiple reads and randomized valid runs. Assembly is tested against the independent AVX-512 intrinsics helper.
+- Full scanner parity is asserted by the benchmark using a persistent scalar baseline: calls and whole-sample checks must match exactly. `small.fastq` retains **77/77 called variants at 100.000% simulated-truth agreement**.
+- Measured release benchmark on the 181 MB, 600,000-read fixture: 256 MiB encoding = **511.809 scalar / 511.517 AVX2 / 467.803 MiB/s AVX-512**. Warm scans (repeats = 2) measured **95.707 / 91.106 / 154.698 MiB/s**, respectively; full JSON equality passed for all three. These are measured scanner results, not encoding-only comparisons.
+- Validation: formatting, strict workspace Clippy and **28 workspace tests** pass. The SIMD encoder is in the actual scanner, but this fixture does **not meet the 1.5 GB/s SPEC target**; optimization remains required. M7 will report both measurements and limitations.
+
+Next: M5 generic NVIDIA Vulkan compute with measured CPU fallback, then app/UI and final benchmarking.

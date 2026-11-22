@@ -2,8 +2,7 @@ use crate::{
     Panel, PanelIndex,
     fastq::{FastqReader, gzip_reader},
     genotype::{GenotypeCall, call},
-    index::scan_read,
-    marker::{MarkerIndex, MarkerLocal, sample_checks},
+    marker::{MarkerIndex, MarkerLocal, MarkerScanner, sample_checks},
     qc::QcLocal,
 };
 use anyhow::Result;
@@ -34,8 +33,20 @@ pub fn scan_path(
     threads: usize,
     progress: Option<&Progress>,
 ) -> Result<ScanResult> {
+    scan_path_with_simd(path, panel, threads, progress, crate::encode::runtime())
+}
+pub fn scan_path_with_simd(
+    path: &Path,
+    panel: &Panel,
+    threads: usize,
+    progress: Option<&Progress>,
+    level: crate::encode::SimdLevel,
+) -> Result<ScanResult> {
+    if !level.available() {
+        anyhow::bail!("requested SIMD level {level:?} is not supported by this CPU");
+    }
     let start = Instant::now();
-    let index = Arc::new(PanelIndex::new(panel));
+    let index = Arc::new(PanelIndex::with_simd(panel, level));
     let markers_index = Arc::new(MarkerIndex::new(panel));
     let file = std::fs::File::open(path)?;
     let source: Box<dyn std::io::Read + Send> = if path.extension().is_some_and(|x| x == "gz") {
@@ -63,6 +74,9 @@ pub fn scan_path(
                 let mut c = vec![[0u32; 4]; index.variants.len()];
                 let mut q = QcLocal::default();
                 let mut m = MarkerLocal::default();
+                let mut marker_scanner = MarkerScanner::new(markers_index, level);
+                let mut encoder = crate::encode::KmerEncoder::new(level);
+                let mut hits = Vec::new();
                 while let Ok(mut batch) = rx.recv() {
                     if let Some(p) = progress {
                         p.bytes.fetch_add(batch.bytes, Ordering::Relaxed);
@@ -72,9 +86,16 @@ pub fn scan_path(
                     for r in &batch.records {
                         let seq = &batch.buf[r.seq_off..r.seq_off + r.seq_len];
                         let qual = &batch.buf[r.qual_off..r.qual_off + r.seq_len];
-                        scan_read(&index, seq, qual, &mut c);
+                        crate::index::scan_read_with(
+                            &index,
+                            seq,
+                            qual,
+                            &mut c,
+                            &mut encoder,
+                            &mut hits,
+                        );
                         q.add(seq, qual);
-                        m.add(seq, &markers_index);
+                        marker_scanner.add(seq, &mut m);
                     }
                     batch.records.clear();
                     let _ = recycle_tx.try_send(std::mem::take(&mut batch.buf));
@@ -127,6 +148,6 @@ pub fn scan_path(
         qc,
         checks,
         elapsed_seconds: start.elapsed().as_secs_f64(),
-        engine: format!("CPU scalar; {} worker threads", workers),
+        engine: format!("CPU {level:?}; {} worker threads", workers),
     })
 }

@@ -1,6 +1,8 @@
+use crate::encode::SimdLevel;
 use crate::{Panel, genotype::GenotypeCall};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::sync::Arc;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SampleChecks {
@@ -42,27 +44,12 @@ impl MarkerLocal {
         self.control += other.control;
         self.telomeric += other.telomeric;
     }
-    pub fn add(&mut self, seq: &[u8], markers: &MarkerIndex) {
-        if tandem(seq, b"TTAGGG") >= 7 || tandem(seq, b"CCCTAA") >= 7 {
-            self.telomeric += 1;
-        }
-        let mut y = false;
-        let mut control = false;
-        for window in seq.windows(crate::KMER_SIZE) {
-            let Some(key) = crate::kmer(window) else {
-                continue;
-            };
-            y |= markers.y.contains(&key);
-            control |= markers.control.contains(&key);
-        }
-        self.y += u64::from(y);
-        self.control += u64::from(control);
-    }
 }
 #[derive(Debug, Default)]
 pub struct MarkerIndex {
     pub y: HashSet<u64>,
     pub control: HashSet<u64>,
+    pub x: HashSet<u64>,
 }
 impl MarkerIndex {
     pub fn new(panel: &Panel) -> Self {
@@ -85,7 +72,42 @@ impl MarkerIndex {
         let mut y = keys("SRY");
         y.extend(keys("UTY"));
         y.retain(|key| !x.contains(key) && !control.contains(key));
-        Self { y, control }
+        Self { y, control, x }
+    }
+}
+
+/// Share immutable k-mer sets and reuse packed-base/key buffers per worker.
+pub struct MarkerScanner {
+    pub index: Arc<MarkerIndex>,
+    encoder: crate::encode::KmerEncoder,
+    keys: Vec<crate::encode::KmerKey>,
+}
+impl MarkerScanner {
+    pub fn new(index: Arc<MarkerIndex>, level: SimdLevel) -> Self {
+        Self {
+            index,
+            encoder: crate::encode::KmerEncoder::new(level),
+            keys: Vec::new(),
+        }
+    }
+    pub fn add(&mut self, seq: &[u8], local: &mut MarkerLocal) {
+        if tandem(seq, b"TTAGGG") >= 7 || tandem(seq, b"CCCTAA") >= 7 {
+            local.telomeric += 1;
+        }
+        let mut y = false;
+        let mut control = false;
+        self.encoder.kmer_keys_into(seq, &mut self.keys);
+        for key in &self.keys {
+            y |= self.index.y.contains(&key.canonical);
+            if self.index.x.contains(&key.canonical) {
+                // X-homolog matches are evidence against Y specificity, even if
+                // a read happens to contain both marker and homolog sequence.
+                y = false;
+            }
+            control |= self.index.control.contains(&key.canonical);
+        }
+        local.y += u64::from(y);
+        local.control += u64::from(control);
     }
 }
 pub fn tandem(seq: &[u8], motif: &[u8]) -> usize {

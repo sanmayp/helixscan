@@ -1,4 +1,4 @@
-use crate::{KMER_MASK, KMER_SIZE, Panel, Variant, allele_kmers};
+use crate::{KMER_SIZE, Panel, Variant, allele_kmers};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -35,8 +35,16 @@ pub struct PanelIndex {
     pub slots: Vec<(u64, Vec<Hit>)>,
     pub mask: usize,
     pub empty_count: usize,
+    pub simd: crate::encode::SimdLevel,
 }
 impl PanelIndex {
+    /// Construct the reference once per scan. SIMD is selected from runtime
+    /// CPUID features; explicitly unsupported levels return an error upstream.
+    pub fn with_simd(panel: &Panel, level: crate::encode::SimdLevel) -> Self {
+        let mut index = Self::new(panel);
+        index.simd = level;
+        index
+    }
     pub fn new(panel: &Panel) -> Self {
         let candidates: usize = panel
             .variants
@@ -50,6 +58,7 @@ impl PanelIndex {
             slots: vec![(0, Vec::new()); capacity],
             mask: capacity - 1,
             empty_count: 0,
+            simd: crate::encode::SimdLevel::Scalar,
         };
         let mut keys: HashMap<u64, Vec<Hit>> = HashMap::new();
         let mut owners: HashMap<u64, HashSet<(u16, u8)>> = HashMap::new();
@@ -92,6 +101,25 @@ impl PanelIndex {
         }
         self.slots[slot] = (key + 1, hits);
     }
+    /// Copy-free in-place lookup avoids allocating a vector per k-mer.
+    pub fn lookup_ref(&self, key: u64) -> Option<&[Hit]> {
+        let h = hash(key);
+        if self.bitmap[(h >> 6) as usize] & (1 << (h & 63)) == 0 {
+            return None;
+        }
+        let mut slot = (h as usize) & self.mask;
+        for _ in 0..=self.mask {
+            let (stored, ref hit) = self.slots[slot];
+            if stored == key + 1 {
+                return Some(hit);
+            }
+            if stored == 0 {
+                return None;
+            }
+            slot = (slot + 1) & self.mask;
+        }
+        None
+    }
     pub fn raw_lookup(&self, key: u64) -> Option<Vec<Hit>> {
         let mut slot = (hash(key) as usize) & self.mask;
         for _ in 0..=self.mask {
@@ -114,39 +142,40 @@ impl PanelIndex {
         self.raw_lookup(key)
     }
     pub fn read_hits(&self, seq: &[u8]) -> Vec<ReadHit> {
-        if seq.len() < KMER_SIZE {
-            return Vec::new();
-        }
+        let mut encoder = crate::encode::KmerEncoder::new(self.simd);
         let mut hits = Vec::new();
-        let (mut f, mut r, mut run) = (0u64, 0u64, 0usize);
-        for (i, &b) in seq.iter().enumerate() {
-            let Some(base) = crate::base_encode(b) else {
-                run = 0;
-                continue;
-            };
-            f = ((f << 2) | base) & KMER_MASK;
-            r = (r >> 2) | ((3 - base) << 60);
-            run += 1;
-            if run < KMER_SIZE {
-                continue;
-            }
-            let observed_forward = f <= r;
-            if let Some(table_hits) = self.lookup(f.min(r)) {
-                for hit in table_hits
-                    .into_iter()
-                    .filter(|hit| (hit.strand == 0) == observed_forward)
+        self.read_hits_with(seq, &mut encoder, &mut hits);
+        hits
+    }
+    /// Reuse the packed-base buffer and result across the reads in a worker.
+    pub fn read_hits_with(
+        &self,
+        seq: &[u8],
+        encoder: &mut crate::encode::KmerEncoder,
+        hits: &mut Vec<ReadHit>,
+    ) {
+        hits.clear();
+        if seq.len() < KMER_SIZE {
+            return;
+        }
+        let mut keys = Vec::new();
+        encoder.kmer_keys_into(seq, &mut keys);
+        for key in keys {
+            if let Some(table_hits) = self.lookup_ref(key.canonical) {
+                for &hit in table_hits
+                    .iter()
+                    .filter(|hit| (hit.strand == 0) == key.forward)
                 {
                     hits.push(ReadHit {
                         variant: hit.variant,
                         allele: hit.allele,
                         offset: hit.offset,
                         strand: hit.strand,
-                        start: (i + 1 - KMER_SIZE) as u32,
+                        start: key.start as u32,
                     });
                 }
             }
         }
-        hits
     }
     /// A read contributes at most one vote per variant. Conflicting alleles
     /// supported by distinct event offsets invalidate that read, not just a k-mer.
@@ -232,7 +261,20 @@ impl PanelIndex {
 type PerVariant = HashMap<usize, HashMap<usize, (usize, u8)>>;
 
 pub fn scan_read(index: &PanelIndex, seq: &[u8], qual: &[u8], counts: &mut [[u32; 4]]) {
-    let hits = index.read_hits(seq);
+    let mut encoder = crate::encode::KmerEncoder::new(index.simd);
+    let mut hits = Vec::new();
+    scan_read_with(index, seq, qual, counts, &mut encoder, &mut hits);
+}
+
+pub fn scan_read_with(
+    index: &PanelIndex,
+    seq: &[u8],
+    qual: &[u8],
+    counts: &mut [[u32; 4]],
+    encoder: &mut crate::encode::KmerEncoder,
+    hits: &mut Vec<ReadHit>,
+) {
+    index.read_hits_with(seq, encoder, hits);
     let mut variants = hits
         .iter()
         .map(|h| h.variant as usize)
