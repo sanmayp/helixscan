@@ -94,10 +94,11 @@ impl MarkerIndex {
     }
 }
 
-/// A cache-local prefix filter preceding an exact full-key open-addressed table.
+/// A compact hash-derived rejection bitmap precedes exact full-key probing.
+/// Positive bitmap verdicts cannot alone add marker evidence.
 #[derive(Debug)]
 struct MarkerLookup {
-    prefixes: Vec<u8>,
+    prefilter: Vec<u64>,
     keys: Vec<u64>,
     flags: Vec<u8>,
     mask: usize,
@@ -107,7 +108,7 @@ impl MarkerLookup {
         let count = index.y.len() + index.control.len() + index.x.len();
         let capacity = (count.max(1) * 2).next_power_of_two();
         let mut this = Self {
-            prefixes: vec![0; 1 << 24],
+            prefilter: vec![0; (1 << 21) / 64],
             keys: vec![0; capacity],
             flags: vec![0; capacity],
             mask: capacity - 1,
@@ -115,7 +116,8 @@ impl MarkerLookup {
         for (flag, keys) in [(1u8, &index.y), (2, &index.control), (4, &index.x)] {
             for &key in keys {
                 let mixed = key.wrapping_mul(0x9E37_79B9_7F4A_7C15);
-                this.prefixes[(mixed >> 40) as usize] |= flag;
+                let prefix = crate::index::hash(key);
+                this.prefilter[(prefix >> 6) as usize] |= 1 << (prefix & 63);
                 let mut slot = mixed as usize & this.mask;
                 while this.keys[slot] != 0 {
                     if this.keys[slot] == key + 1 {
@@ -135,7 +137,8 @@ impl MarkerLookup {
     #[inline]
     fn flags(&self, key: u64) -> u8 {
         let mixed = key.wrapping_mul(0x9E37_79B9_7F4A_7C15);
-        if self.prefixes[(mixed >> 40) as usize] == 0 {
+        let prefix = crate::index::hash(key);
+        if self.prefilter[(prefix >> 6) as usize] & (1 << (prefix & 63)) == 0 {
             return 0;
         }
         let mut slot = mixed as usize & self.mask;
@@ -368,6 +371,30 @@ pub fn ancestry(panel: &Panel, calls: &[GenotypeCall]) -> Vec<AncestryScore> {
     }
     out.sort_by(|a, b| a.difference.total_cmp(&b.difference));
     out
+}
+
+#[cfg(test)]
+mod lookup_tests {
+    #[test]
+    fn prefix_collisions_keep_exact_marker_semantics() {
+        let known = crate::kmer(b"ACGTACGTACGTACGTACGTACGTACGTACG").unwrap();
+        let collision = (0..)
+            .map(|n| known.wrapping_add(1).wrapping_mul(n))
+            .find(|key| {
+                *key != known
+                    && crate::index::hash(*key) == crate::index::hash(known)
+                    && *key != u64::MAX
+            })
+            .unwrap();
+        let index = super::MarkerIndex::from_sets(
+            [known].into_iter().collect(),
+            std::collections::HashSet::new(),
+            std::collections::HashSet::new(),
+        );
+        let lookup = index.lookup();
+        assert_eq!(lookup.flags(known), 1);
+        assert_eq!(lookup.flags(collision), 0);
+    }
 }
 
 #[cfg(test)]
