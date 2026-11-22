@@ -42,7 +42,9 @@ async function api(path, options={}) {
 }
 function backend() {return document.querySelector('input[name="backend"]:checked')?.value||'auto';}
 function setScanning(running) {
+  $('scan-page').style.setProperty('--phone-control-height','0px');
   document.body.classList.toggle('scan-running',running);
+  $('scan-page').style.setProperty('--phone-control-height',`${document.querySelector('.control-bar').getBoundingClientRect().height}px`);
   for(const element of [$('file-input'),$('threads'),$('cores-minus'),$('cores-plus'),...document.querySelectorAll('input[name="backend"]')])element.disabled=running;
   document.querySelector('.upload-control').classList.toggle('disabled',running);
   $('upload').disabled=running;
@@ -81,8 +83,12 @@ function progressState(snapshot) {
   $('bases').textContent=compact.format(snapshot.bases||0);$('bases').title=number.format(snapshot.bases||0);
   $('elapsed').textContent=formatTime(elapsed);
   const fraction=snapshot.total_bytes?Math.min(snapshot.bytes/snapshot.total_bytes,1):0;
-  $('progress-fill').style.width=`${fraction*100}%`;$('progress-percent').innerHTML=`${Math.round(fraction*100)}<span>%</span>`;
+  $('progress-fill').style.width=`${fraction*100}%`;
+  $('progress-percent').innerHTML=`${Math.round(fraction*100)}<span>%</span>`;
+  document.querySelector('.phone-progress-fill').style.width=`${fraction*100}%`;
+  document.querySelector('.phone-progress strong').textContent=`${Math.round(fraction*100)}%`;
   document.querySelector('.progress-track').setAttribute('aria-valuenow',String(Math.round(fraction*100)));
+  document.querySelector('.phone-progress-label').textContent=snapshot.state==='complete'?'Your report is ready':snapshot.state==='running'?'Scanning reads…':'Progress saved for this scan';
   $('bytes-progress').textContent=`${size(snapshot.bytes)} read${snapshot.total_bytes?' of '+size(snapshot.total_bytes):''}`;
   $('eta').textContent=fraction>0&&fraction<1?`ETA ${formatTime((snapshot.total_bytes-snapshot.bytes)*elapsed/snapshot.bytes)}`:'ETA —';
   $('scan-state').textContent=snapshot.state==='running'?'SCANNING':snapshot.state==='complete'?'COMPLETE':'READY';

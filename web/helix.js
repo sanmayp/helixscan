@@ -18,16 +18,14 @@ export async function createHelix(container) {
   const colors = ['#01eff1', '#f17fbd', '#74d3c2', '#a9a0f7'];
   const project = (x, y, z, time) => {
     const turn = motion.matches ? 0 : time * .000075;
-    const a = phase + y * .011 + turn;
-    const depth = Math.sin(a);
+    // Several turns along the molecule make the 2D/WebGL fallback a helix,
+    // rather than the two straight rails produced by the old nearly-flat angle.
+    const a = phase + y * Math.PI * 5.2 + turn;
+    const depth = Math.cos(a);
     const spread = Math.min(width * .225, height * .245, 160);
-    const center = height * .5;
-    return {x: width * .5 + Math.cos(a) * spread, y: height * .10 + y * height * .80, z: depth};
+    const perspective = .76 + (depth + 1) * .12;
+    return {x: width * .5 + Math.sin(a) * spread * perspective, y: height * .10 + y * height * .80, z: depth};
   };
-  function bezierPoint(a, b, c, d, t) {
-    const s = 1-t;
-    return {x:s*s*s*a.x+3*s*s*t*b.x+3*s*t*t*c.x+t*t*t*d.x,y:s*s*s*a.y+3*s*s*t*b.y+3*s*t*t*c.y+t*t*t*d.y};
-  }
   function draw(time = 0) {
     if (stopped) return;
     ctx.clearRect(0, 0, width, height);
@@ -47,27 +45,42 @@ export async function createHelix(container) {
       const a=project(0,y,0,time),b={...a,x:width-a.x,z:-a.z};
       first.push(a);second.push(b);
     }
-    // Rungs behind the strands.
+    // Back-to-front painting gives rungs perspective and keeps the
+    // rear strand visibly dimmer wherever the two sine strands cross.
+    const pieces=[];
     for(let i=2;i<count-2;i+=3) {
-      const a=first[i],b=second[i];
-      const gradient=ctx.createLinearGradient(a.x,a.y,b.x,b.y);
-      gradient.addColorStop(0,'rgba(0,222,239,.48)');gradient.addColorStop(.48,'rgba(106,171,194,.15)');gradient.addColorStop(1,'rgba(232,102,181,.42)');
-      ctx.strokeStyle=gradient;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();
-      ctx.strokeStyle='rgba(195,251,255,.12)';ctx.lineWidth=.75;ctx.beginPath();ctx.moveTo(a.x,a.y-1);ctx.lineTo(b.x,b.y-1);ctx.stroke();
+      const a=first[i],b=second[i],depth=(a.z+b.z)/2;
+      const trim=2+(depth+1)*1.5;
+      const dx=b.x-a.x,dy=b.y-a.y,length=Math.hypot(dx,dy)||1;
+      const ax=a.x+dx/length*trim,ay=a.y+dy/length*trim;
+      const bx=b.x-dx/length*trim,by=b.y-dy/length*trim;
+      const gradient=ctx.createLinearGradient(ax,ay,bx,by);
+      gradient.addColorStop(0,'rgba(0,222,239,.64)');gradient.addColorStop(.48,'rgba(106,171,194,.19)');gradient.addColorStop(1,'rgba(232,102,181,.56)');
+      pieces.push({z:Math.min(a.z,b.z)-.15,draw(){
+        ctx.globalAlpha=.22+(depth+1)*.25;ctx.strokeStyle=gradient;ctx.lineWidth=.7+(depth+1)*1.1;
+        ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(bx,by);ctx.stroke();ctx.globalAlpha=1;
+      }});
     }
     for(const [points,color] of [[first,'#01e3fa'],[second,'#ed79bd']]) {
-      ctx.strokeStyle=color;ctx.lineWidth=2;ctx.globalAlpha=.65;ctx.beginPath();
-      points.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.stroke();ctx.globalAlpha=1;
-      const ordered=points.map((p,i)=>({...p,i})).sort((a,b)=>a.z-b.z);
-      for(const p of ordered) {
-        const radius=2.5+(p.z+1)*2.2;
-        ctx.shadowColor=color;ctx.shadowBlur=9;
-        const g=ctx.createRadialGradient(p.x-radius*.4,p.y-radius*.4,0,p.x,p.y,radius);
-        g.addColorStop(0,'#eaffff');g.addColorStop(.25,color);g.addColorStop(.75,color);g.addColorStop(1,'rgba(0,35,48,.85)');
-        ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,radius,0,Math.PI*2);ctx.fill();
+      for(let i=1;i<points.length;i++) {
+        const a=points[i-1],b=points[i],depth=(a.z+b.z)/2;
+        pieces.push({z:depth,draw(){
+          ctx.strokeStyle=color;ctx.globalAlpha=.23+(depth+1)*.34;ctx.lineWidth=1.1+(depth+1)*.8;
+          ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();ctx.globalAlpha=1;
+        }});
       }
-      ctx.shadowBlur=0;
+      for(const p of points) {
+        pieces.push({z:p.z+.02,draw(){
+          const radius=1.8+(p.z+1)*2;
+          ctx.shadowColor=color;ctx.shadowBlur=3+(p.z+1)*3;ctx.globalAlpha=.35+(p.z+1)*.325;
+          const g=ctx.createRadialGradient(p.x-radius*.4,p.y-radius*.4,0,p.x,p.y,radius);
+          g.addColorStop(0,'#eaffff');g.addColorStop(.25,color);g.addColorStop(.75,color);g.addColorStop(1,'rgba(0,35,48,.85)');
+          ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,radius,0,Math.PI*2);ctx.fill();
+          ctx.shadowBlur=0;ctx.globalAlpha=1;
+        }});
+      }
     }
+    pieces.sort((a,b)=>a.z-b.z).forEach(piece=>piece.draw());
     // The scan ring follows input bytes, not wall-clock animation.
     const scanY=height*(.10+fraction*.80);
     ctx.save();ctx.shadowColor='#17fcfd';ctx.shadowBlur=20;

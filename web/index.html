@@ -45,6 +45,7 @@
         <div class="cores-control"><label for="threads">Cores <output id="cores-output">11</output></label><div><button id="cores-minus" aria-label="Use fewer cores">−</button><input id="threads" type="number" min="1" max="64" value="11" aria-label="Worker cores"><button id="cores-plus" aria-label="Use more cores">+</button></div></div>
         <div class="scan-actions"><button id="start" class="button primary" disabled><svg><use href="#i-play"/></svg><span>Start scan</span></button><button id="stop" class="button stop" hidden><svg><use href="#i-stop"/></svg>Stop</button></div>
       </header>
+      <div class="phone-progress" aria-label="Current scan progress" aria-live="polite"><span class="phone-progress-label">Ready when you are</span><span class="phone-progress-track"><span class="phone-progress-fill"></span></span><strong>0%</strong></div>
       <div class="scan-workspace">
         <aside class="scan-metrics">
           <section class="panel progress-panel" aria-label="Input and progress">
