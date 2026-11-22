@@ -3,6 +3,7 @@ import { createHelix, disposeHelix } from './helix.js';
 
 const $ = id => document.getElementById(id);
 const safe = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const array = value => value ?? [];
 const number = new Intl.NumberFormat(undefined, {maximumFractionDigits: 0});
 const compact = new Intl.NumberFormat(undefined, {notation: 'compact', maximumFractionDigits: 1});
 const RECENT_KEY = 'helixscan.recent.v1';
@@ -41,6 +42,7 @@ function personalHighlights(r) {
 
 const chapterBanner = (id,i,title,sub) => `<figure class="chapter-banner"><img src="/art/${CHAPTER_ART[id]}" alt="" width="1024" height="1024" loading="lazy" decoding="async"><figcaption class="chapter-heading"><div class="chapter-number">${String(i+1).padStart(2,'0')}<span>/ 07</span></div><div><span class="eyebrow">CHAPTER ${String(i+1).padStart(2,'0')}</span><h2>${title}</h2><p>${sub}</p></div></figcaption></figure>`;
 export const DISCLAIMER = 'Research and education only. Not a medical diagnosis. Talk to a doctor or genetic counselor about any result.';
+const panelGenes = [];
 let selectedName = '', selectedSize = 0, activeId = '', lastResult = null, reportUrl = '';
 let eventSource = null, pollTimer = null, telemetryTimer = null, completedOnScan = false;
 let helix = null, logicalCores = 0, recentReports = readRecent();
@@ -174,6 +176,26 @@ async function pollSnapshot() {
 }
 function showReport(data) {
   if(!data?.report)throw new Error('This saved report is not available yet.');
+  // Accept the JobReport saved by master and the earlier nested response wrapper.
+  if(data.report.report)data={...data.report,report_id:data.report_id||data.report.report_id};
+  // Older saved jobs omitted optional evidence and interpretation arrays.
+  // Normalize once so screen, print and evidence views all use the same safe shape.
+  const r=data.report;
+  for(const key of ['variants','traits','pgx','limitations'])r[key]=array(r[key]);
+  r.sample_checks=r.sample_checks||{};r.qc=r.qc||{};
+  r.sample_checks.sex=r.sample_checks.sex||{};
+  r.sample_checks.telomere=r.sample_checks.telomere||{};
+  r.apoe=r.apoe||{};
+  r.sample_checks.ancestry=array(r.sample_checks.ancestry);
+  r.apoe.haplotypes=array(r.apoe.haplotypes);
+  for(const trait of array(r.traits)){
+    trait.evidence=array(trait.evidence);
+    trait.rsids=array(trait.rsids);
+  }
+  for(const variant of array(r.variants)){
+    variant.evidence=array(variant.evidence);
+    variant.alt_votes=array(variant.alt_votes);
+  }
   lastResult=data;activeId='show-report';rememberReport(data);
   $('scan-page').hidden=true;$('report-page').hidden=false;
   document.body.classList.remove('scan-active','scan-running');document.body.classList.add('report-active');
@@ -183,9 +205,11 @@ function showReport(data) {
 window.loadReportById=async id=>{
   activeId='show-report';reportUrl=`/reports/${encodeURIComponent(id)}/report`;
   try {
-    const [saved,snapshot]=await Promise.all([api(`/api/scans/${encodeURIComponent(id)}/report.json`),api(`/reports/${encodeURIComponent(id)}`)]);
-    // Saved endpoint wraps the JobReport as { report_id, report, filename, ... }.
-    const result=saved.report_id&&saved.report.report?{...saved,snapshot}:saved.report_id&&saved.filename?saved:{report_id:id,...snapshot.result};
+    const [saved,snapshot]=await Promise.all([
+      api(`/api/scans/${encodeURIComponent(id)}/report.json`).catch(()=>null),
+      api(`/reports/${encodeURIComponent(id)}`),
+    ]);
+    const result=saved?.report_id&&saved.filename?{...saved,snapshot}:snapshot.result;
     showReport(result);
   } catch(error) {
     $('report-page').innerHTML=`<div class="report-error"><span class="eyebrow">REPORT UNAVAILABLE</span><h1>We couldn’t open this report.</h1><p>${safe(error.message)}</p><a class="button primary" href="/">Start a new scan</a></div>`;
@@ -201,7 +225,8 @@ function goScan() {
 async function initialize() {
   renderRecent();
   const [files,panel]=await Promise.all([api('/api/files'),api('/api/panel')]);
-  $('variant-count').textContent=panel.variants;$('panel-markers').textContent=panel.variants;$('panel-genes').textContent=panel.genes.length;$('panel-traits').textContent=panel.searched_traits;
+  $('variant-count').textContent=panel.variants;$('panel-markers').textContent=panel.variants;$('panel-genes').textContent=(panel.genes||[]).length;$('panel-traits').textContent=panel.searched_traits;
+  panelGenes.splice(0,panelGenes.length,...(panel.genes||[]));if(helix)helix.setPanelGenes(panelGenes);
   $('file-input').innerHTML='<option value="">Choose a FASTQ file…</option>'+files.map(file=>`<option value="${safe(file.name)}" data-size="${file.size}">${safe(file.name)} · ${size(file.size)}</option>`).join('');
   $('file-input').addEventListener('change',()=>updateFile($('file-input').selectedOptions[0]));
   $('file-input').selectedIndex=files.findIndex(file=>file.name==='demo-20gb.fastq')>=0?files.findIndex(file=>file.name==='demo-20gb.fastq')+1:files.length?1:0;
@@ -245,7 +270,7 @@ async function drawTelemetry() {
   } catch {$('gpu-reason').textContent='Engine telemetry is unavailable.';$('gpu-util').textContent='GPU off';}
 }
 document.querySelectorAll('input[name="backend"]').forEach(input=>input.addEventListener('change',drawEngine));
-const loadHelix=async()=>{try{helix=await createHelix($('helix'));}catch{$('helix').innerHTML='<div class="helix-fallback"></div>';}};
+const loadHelix=async()=>{try{helix=await createHelix($('helix'),{genes:panelGenes});}catch{$('helix').innerHTML='<div class="helix-fallback"></div>';}};
 if(document.readyState==='loading')window.addEventListener('DOMContentLoaded',loadHelix,{once:true});else loadHelix();
 initialize().catch(error=>{$('progress-label').textContent=error.message;console.error(error);window.dispatchEvent(new Event('helixscan-ready'));});
 window.addEventListener('pagehide',()=>{clearInterval(telemetryTimer);clearTimeout(pollTimer);closeStream();disposeHelix();});

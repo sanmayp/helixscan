@@ -1,6 +1,6 @@
 // The supplied artwork is primary; the canvas above it contains only live evidence.
 // A drawn helix is used solely when embedded video cannot be played.
-export async function createHelix(container) {
+export async function createHelix(container, options = {}) {
   const canvas = document.createElement('canvas');
   canvas.className = 'helix-overlay';
   canvas.setAttribute('aria-hidden', 'true');
@@ -26,6 +26,8 @@ export async function createHelix(container) {
   fallback.append(fallbackCanvas);
   const fallbackCtx = fallbackCanvas.getContext('2d');
   let width = 1, height = 1, fraction = 0, hits = [], stopped = false;
+  const panelGenes = Array.isArray(options.genes) ? options.genes : [];
+  const defaults = ['TCF7L2', 'KCNJ11', 'PPARG', 'FTO', 'SLC30A8', 'APOE', 'HFE', 'F5', 'F2', 'LCT'];
   const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
   const videos = [];
   let active = 0, fadeFrame = 0, ready = false;
@@ -72,7 +74,11 @@ export async function createHelix(container) {
     ctx.ellipse(width * .5, scanY, Math.min(width * .26, 150), 10, 0, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
-    const genes = hits.slice(0, 10);
+    // Keep the panel visible before evidence arrives; hit genes light up in place.
+    const genes = (panelGenes.length ? panelGenes : defaults).map((gene, i) => {
+      const hit = hits.find(h => h.gene === gene || gene.split('/').includes(h.gene));
+      return {gene: hit?.gene || gene, alt_votes: hit?.alt_votes || 0, idle: !hit, i};
+    }).sort((a, b) => Number(a.idle) - Number(b.idle) || a.i - b.i).slice(0, 15);
     if (!genes.length) return;
     ctx.font = '600 10px Inter, system-ui, sans-serif';
     ctx.textBaseline = 'middle';
@@ -85,9 +91,9 @@ export async function createHelix(container) {
       const labelWidth = ctx.measureText(hit.gene).width + 18;
       const x = side > 0 ? Math.min(width - labelWidth - 8, width * .65) : Math.max(8, width * .35 - labelWidth);
       const lineEnd = side > 0 ? x : x + labelWidth;
-      const color = hit.alt_votes > 0 ? '#faac41' : '#01eff1';
+      const color = hit.idle ? '#42656e' : hit.alt_votes > 0 ? '#faac41' : '#01eff1';
       ctx.strokeStyle = color;
-      ctx.globalAlpha = .85;
+      ctx.globalAlpha = hit.idle ? .42 : .85;
       ctx.lineWidth = .8;
       ctx.beginPath();
       ctx.moveTo(x0, y0);
@@ -98,14 +104,14 @@ export async function createHelix(container) {
       ctx.beginPath();
       ctx.arc(x0, y0, 2.2, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = 'rgba(1,16,23,.90)';
+      ctx.fillStyle = hit.idle ? 'rgba(2,19,27,.65)' : 'rgba(1,16,23,.90)';
       ctx.beginPath();
       ctx.roundRect(x, y0 + (y0 < scanY ? -24 : -2), labelWidth, 22, 5);
       ctx.fill();
-      ctx.globalAlpha = .85;
+      ctx.globalAlpha = hit.idle ? .42 : .85;
       ctx.stroke();
       ctx.globalAlpha = 1;
-      ctx.fillStyle = color;
+      ctx.fillStyle = hit.idle ? '#5b7c85' : color;
       ctx.fillText(hit.gene, x + 9, y0 + (y0 < scanY ? -13 : 9));
     });
   }
@@ -247,6 +253,7 @@ export async function createHelix(container) {
     renderer,
     update(value) { fraction = Math.min(Math.max(Number(value) || 0, 0), 1); drawOverlay(); },
     setHits(value) { hits = Array.isArray(value) ? value : []; drawOverlay(); },
+    setPanelGenes(value) { if(Array.isArray(value)) { panelGenes.splice(0,panelGenes.length,...value); drawOverlay(); } },
     setHit() {},
   };
 }

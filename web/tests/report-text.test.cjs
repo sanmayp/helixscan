@@ -19,6 +19,17 @@ const missing = JSON.parse(JSON.stringify(saved));
 delete missing.report.sample_checks.ancestry_summary;
 missing.report.sample_checks.ancestry = [];
 const missingSnapshot = { ...snapshot, result: missing };
+const sparse = JSON.parse(JSON.stringify(saved));
+for (const key of ['traits', 'pgx', 'limitations']) delete sparse.report[key];
+delete sparse.report.sample_checks.ancestry;
+delete sparse.report.apoe.haplotypes;
+for (const variant of sparse.report.variants) {
+  delete variant.evidence;
+  delete variant.alt_votes;
+}
+for (const trait of saved.report.traits || []) delete trait.evidence;
+const fresh = JSON.parse(JSON.stringify(saved));
+const missingFieldsTest = process.env.HELIXSCAN_FULL_REPORT_TEST === '1';
 const executablePath = process.env.CHROMIUM_PATH || path.join(root, '.look-tmp/browsers/chromium-1248/chrome-linux64/chrome');
 
 async function serveWeb() {
@@ -53,6 +64,9 @@ async function testFixture(browser, errors, [name, data, reportSnapshot]) {
     await page.route(`**/reports/${data.report_id}`, route => route.fulfill({ json: reportSnapshot }));
     await page.goto(`http://127.0.0.1:${server.address().port}/reports/${data.report_id}/report`);
     await page.locator('.story-chapter').first().waitFor({ timeout: 10000 });
+    assert.equal(await page.locator('.report-error').count(), 0, `${name}: saved/fresh report error text`);
+    assert.doesNotMatch(await page.locator('#report-page').innerText(), /couldn.t open this report|Cannot read properties/i);
+    if (!missingFieldsTest) return;
 
     const durations = await page.evaluate(() => [0.8, 1, 12, 600].map(value => window.helixscanReportTest.readableDuration(value)));
     assert.deepEqual(durations, ['under a second', '1 second', '12 seconds', '10 minutes']);
@@ -139,14 +153,51 @@ async function test() {
   const browser = await chromium.launch({ headless: true, executablePath, args: ['--no-sandbox'] });
   const errors = [];
   try {
-    for (const fixture of [['normal', saved, snapshot], ['missing-fields', missing, missingSnapshot]]) {
-      await testFixture(browser, errors, fixture);
+    if (missingFieldsTest) {
+      for (const fixture of [['normal', saved, snapshot], ['missing-fields', missing, missingSnapshot]]) {
+        await testFixture(browser, errors, fixture);
+      }
+    } else {
+      await testFixture(browser, errors, ['saved-missing-optional-arrays', sparse, snapshot]);
+      // Simulate a newly completed scan through the production SSE controller.
+      const page = await browser.newPage({ viewport: { width: 1344, height: 752 } });
+      page.on('pageerror', error => errors.push(`fresh-report: ${error.message}`));
+      await page.route('**/api/scans/*/events', async route => {
+        await route.fulfill({ contentType: 'text/event-stream', body: `event: progress\ndata: ${JSON.stringify({ ...snapshot, state: 'complete', result: fresh })}\n\n` });
+      });
+      await page.route('**/reports/*', async route => {
+        if (route.request().resourceType() === 'document') {
+          const server = await serveWeb();
+          try { await page.goto(`http://127.0.0.1:${server.address().port}/reports/${fresh.report_id}/report`); }
+          finally { await new Promise(resolve => server.close(resolve)); }
+        } else await route.fulfill({ json: { ...snapshot, state: 'complete', result: fresh } });
+      });
+      await page.route('**/api/files', route => route.fulfill({ json: [] }));
+      await page.route('**/api/panel', route => route.fulfill({ json: { variants: 77, genes: [], searched_traits: 39 } }));
+      await page.route('**/api/scans/*/report.json', route => route.fulfill({ json: fresh }));
+      await page.route('**/api/telemetry', route => route.fulfill({ json: { cpus: [], simd: 'test', reader_threads: 1, workers: 1, gpu_busy_percent: null } }));
+      await page.route('**/api/scans', route => route.fulfill({ json: { id: fresh.report_id, report_url: `/reports/${fresh.report_id}/report` } }));
+      await page.goto('about:blank');
+      const server = await serveWeb();
+      try {
+        await page.goto(`http://127.0.0.1:${server.address().port}/`);
+        // progressState is the same production handler used for a fresh scan.
+        await page.evaluate(result => window.helixscanTest.progressState({ state: 'complete', elapsed_seconds: 1, hits: [], result }), fresh);
+        await page.locator('.story-chapter').first().waitFor();
+        assert.equal(await page.locator('.report-error').count(), 0, 'fresh report renders without error text');
+        assert.doesNotMatch(await page.locator('#report-page').innerText(), /couldn.t open this report|Cannot read properties/i);
+      } finally {
+        await page.close();
+        await new Promise(resolve => server.close(resolve));
+      }
     }
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();
   }
-  console.log('PASS: guarded personal opening, bounded overflow-free booklet, complete text and readable durations');
+  console.log(missingFieldsTest
+    ? 'PASS: guarded personal opening, bounded overflow-free booklet, complete text and readable durations'
+    : 'PASS: saved report with missing arrays and a fresh report both render with no error text');
 }
 
 test().catch(error => { console.error(error); process.exitCode = 1; });
