@@ -3,42 +3,98 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#070b14">
-  <title>HelixScan · Research DNA scanner</title>
+  <meta name="theme-color" content="#01080e">
+  <title>HelixScan · Your DNA, in focus</title>
   <link rel="stylesheet" href="/styles.css">
-  <link rel="stylesheet" href="/responsive.css">
   <link rel="stylesheet" href="/visuals.css">
-  <script type="importmap">{"imports":{"three":"/vendor/three.module.js"}}</script>
+  <link rel="stylesheet" href="/responsive.css">
+  <link rel="stylesheet" href="/print.css">
   <script type="module" src="/app.js"></script>
 </head>
-<body>
-  <header class="masthead"><a class="brand" href="/"><span class="brand-mark">H</span><span>Helix<span>Scan</span></span></a><span class="tag">GENOMIC RESEARCH / v0.1</span><button id="report-tab" class="button secondary hidden">Report <span aria-hidden="true">↗</span></button></header>
-  <main>
+<body class="scan-active">
+  <a class="skip-link" href="#scan-page">Skip to workspace</a>
+  <svg class="icon-defs" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+    <symbol id="i-helix" viewBox="0 0 32 40"><path d="M8 2c0 8 16 10 16 18S8 30 8 38M24 2c0 8-16 10-16 18s16 10 16 18M9 7h14M12 13h8M10 20h12M12 27h8M9 34h14"/></symbol>
+    <symbol id="i-scan" viewBox="0 0 24 24"><path d="M4 8V4h4m8 0h4v4m0 8v4h-4m-8 0H4v-4M7 12h10M9 7v10m6-10v10"/></symbol>
+    <symbol id="i-report" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 12h7m-7 4h7"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-leaf" viewBox="0 0 24 24"><path d="M20 3C8 3 3 7 3 14s6 7 10 3 7-9 7-14ZM4 20l12-12"/></symbol>
+    <symbol id="i-coffee" viewBox="0 0 24 24"><path d="M4 7h12v9a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V7Zm12 2h2a3 3 0 0 1 0 6h-2M6 3v2m4-2v2m4-2v2M3 22h15"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 2 2 7 7 3-7 3-2 7-3-7-7-3 7-3 3-7Z"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c4 4 4 14 0 18-4-4-4-14 0-18Z"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M5 2h10l5 5v15H5zM14 2v6h6M8 12h8m-8 4h8"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V3m-4 4 4-4 4 4M4 14v7h16v-7"/></symbol>
+    <symbol id="i-chip" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4m6-4v4M9 18v4m6-4v4M2 9h4m-4 6h4m12-6h4m-4 6h4M10 10h4v4h-4z"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="m8 4 12 8-12 8z"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 3"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-5-5 5 5-5 5"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="i-print" viewBox="0 0 24 24"><path d="M7 8V3h10v5M7 17H4V9h16v8h-3m-10-4h10v8H7z"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v13m-5-5 5 5 5-5M4 16v5h16v-5"/></symbol>
+  </defs></svg>
+  <aside class="sidebar" aria-label="Main navigation">
+    <a class="brand" href="/" aria-label="HelixScan home"><svg class="dna-logo"><use href="#i-helix"/></svg><span>Helix<span>Scan</span><small>YOUR DNA, IN FOCUS</small></span></a>
+    <nav class="main-nav"><a id="scan-nav" href="/" class="active"><svg><use href="#i-scan"/></svg><span>Scan</span></a><button id="reports-nav"><svg><use href="#i-report"/></svg><span>Reports</span></button><button id="about-nav"><svg><use href="#i-info"/></svg><span>About the panel</span></button></nav>
+    <section class="recent"><div class="sidebar-label">RECENT REPORTS <span id="recent-count"></span></div><div id="recent-reports"><p class="recent-empty">Your completed reports will appear here.</p></div></section>
+    <button class="sidebar-disclaimer" id="disclaimer-link"><span>!</span> Research use only.<br>Not a medical diagnosis.</button>
+  </aside>
+
+  <main class="app-main">
     <section id="scan-page">
-      <div class="page-title"><div><p class="eyebrow">WHOLE-READ / PANEL ANALYSIS</p><h1>Sequence, illuminated.</h1><p class="lede">Scan FASTQ reads against a verified genetic marker panel.</p></div><button id="open-report" class="button primary hidden">Open report →</button></div>
-      <div class="warning">Research and education only. Not a medical diagnosis. Talk to a doctor or genetic counselor about any result.</div>
-      <div class="scan-layout">
-        <aside class="controls">
-          <section class="glass"><h2><span class="index">01</span> Input</h2><label class="label" for="file-input">FASTQ file</label><div class="input-row"><select id="file-input" aria-label="Select a FASTQ file"><option value="">Choose a file…</option></select><label class="button upload">Upload<input id="upload" type="file" accept=".fastq,.fq,.gz,.fastq.gz,.fq.gz" hidden></label></div><dl class="facts"><div><dt>File size</dt><dd id="file-size">—</dd></div><div><dt>Format</dt><dd id="file-format">—</dd></div><div><dt>Marker panel</dt><dd><span id="variant-count">77</span> variants</dd></div></dl><div class="scan-options"><label>Engine<select id="backend"><option value="auto">CPU · runtime SIMD</option><option value="cpu">CPU</option><option value="gpu">GPU · forced</option></select></label><label>Cores<input id="threads" type="number" min="1" max="64" value="11"></label></div><button id="start" class="button primary" disabled>Start scan <span aria-hidden="true">→</span></button><button id="reset" class="text-button">New scan</button></section>
-          <section class="glass"><h2><span class="index">02</span> Live throughput</h2><div class="big-number"><span id="rate">0.00</span><small>GB/s</small></div><div class="stats"><div><span id="reads">0</span><small>reads</small></div><div><span id="bases">0</span><small>bases</small></div></div><dl class="facts"><div><dt>Elapsed</dt><dd id="elapsed">0.0 s</dd></div><div><dt>Reader / workers</dt><dd id="workers">1 / 11</dd></div></dl></section>
-          <section class="glass"><h2><span class="index">03</span> Engine</h2><div id="cpu-bars" class="cpu-bars" aria-label="Per-core CPU utilization"></div><dl class="facts"><div><dt>GPU utilization</dt><dd id="gpu-util">Unavailable</dd></div><div><dt>SIMD</dt><dd id="simd">—</dd></div><div><dt>Device</dt><dd id="device">Runtime selection</dd></div></dl><p id="fallback" class="fallback"></p></section>
+      <header class="control-bar">
+        <div class="page-heading"><span class="eyebrow">SEQUENCE WORKSPACE</span><h1>New scan</h1></div>
+        <div class="file-control"><label for="file-input">FASTQ input</label><select id="file-input"><option value="">Choose a file…</option></select></div>
+        <label class="button upload-control"><svg><use href="#i-upload"/></svg>Upload<input id="upload" type="file" accept=".fastq,.fq,.gz,.fastq.gz,.fq.gz" hidden></label>
+        <div class="engine-control"><span>Engine</span><div class="segmented" id="engine-options"><label><input type="radio" name="backend" value="auto" checked><span>Auto</span></label><label><input type="radio" name="backend" value="cpu"><span>CPU</span></label><label><input type="radio" name="backend" value="gpu"><span>GPU</span></label></div></div>
+        <div class="cores-control"><label for="threads">Cores <output id="cores-output">11</output></label><div><button id="cores-minus" aria-label="Use fewer cores">−</button><input id="threads" type="number" min="1" max="64" value="11" aria-label="Worker cores"><button id="cores-plus" aria-label="Use more cores">+</button></div></div>
+        <div class="scan-actions"><button id="start" class="button primary" disabled><svg><use href="#i-play"/></svg><span>Start scan</span></button><button id="stop" class="button stop" hidden><svg><use href="#i-stop"/></svg>Stop</button></div>
+      </header>
+      <div class="phone-progress" aria-label="Current scan progress" aria-live="polite"><span class="phone-progress-label">Ready when you are</span><span class="phone-progress-track"><span class="phone-progress-fill"></span></span><strong>0%</strong></div>
+      <div class="scan-workspace">
+        <aside class="scan-metrics">
+          <section class="panel progress-panel" aria-label="Input and progress">
+            <div class="panel-heading"><h2>Progress</h2><span id="scan-state" class="state-label">READY</span></div>
+            <div class="file-card"><svg><use href="#i-file"/></svg><div><strong id="selected-file">No input selected</strong><small><span id="file-size">Choose a FASTQ file</span><span id="file-format"></span></small></div></div>
+            <div class="throughput"><span>Throughput</span><strong id="rate">0.00<small>GB/s</small></strong></div>
+            <dl class="metric-rows"><div><dt>Reads scanned</dt><dd id="reads">0</dd></div><div><dt>Bases</dt><dd id="bases">0</dd></div><div><dt>Elapsed</dt><dd id="elapsed">00:00</dd></div></dl>
+          </section>
+          <section class="panel engine-panel" aria-label="Compute engine">
+            <div class="panel-heading"><h2>Engine</h2><span id="simd" class="micro-label">DETECTING</span></div>
+            <div class="cpu-heading"><span>CPU <span id="logical-cores"></span></span><small>LIVE ACTIVITY</small></div>
+            <div id="cpu-bars" class="cpu-bars" aria-label="Per-core CPU utilization"></div>
+            <div class="gpu-row"><div><span><svg><use href="#i-chip"/></svg><span id="gpu-label">GPU acceleration</span></span><strong id="gpu-util">GPU off</strong></div><div class="gpu-track"><i id="gpu-fill"></i></div><p id="gpu-reason">Select CPU or Auto to run on this device.</p></div>
+            <div class="engine-facts"><div><span>Reader</span><strong id="reader-threads">1 thread</strong></div><div><span>Workers</span><strong id="workers">11 threads</strong></div><div><span>SIMD</span><strong id="device">Runtime</strong></div></div>
+            <p id="fallback" class="fallback"></p>
+          </section>
         </aside>
-        <section class="helix-panel glass"><div class="panel-top"><span class="eyebrow">LIVE / SEQUENCE EXPLORER</span><span id="helix-status" class="status idle"><i></i>No scan yet</span></div><div id="helix" role="img" aria-label="Animated DNA double helix with scanning ring"></div><div id="gene-tag" class="gene-tag">Awaiting sequence evidence</div><div class="progress-track"><span id="progress-fill"></span></div><div class="progress-row"><span id="progress-label">Ready for a FASTQ input</span><span id="eta">—</span></div></section>
-        <aside class="live panel"><div class="panel-top"><h2>Live hits</h2><span id="hit-count" class="pill">0 genes</span></div><p id="empty-hits" class="empty">No evidence yet.<br>Supporting reads will appear here.</p><div id="hits"></div></aside>
+        <section class="panel helix-panel">
+          <div class="helix-heading"><div><span class="live-dot"></span><span class="eyebrow">LIVE SEQUENCE EXPLORER</span></div><span class="helix-legend"><i></i>Evidence mapped</span></div>
+          <div id="helix" role="img" aria-label="Animated DNA double helix with gene labels and scan progress ring"></div>
+          <div class="helix-caption"><span id="variant-count">77</span> markers <i></i> One read at a time</div>
+        </section>
+        <section class="panel live-panel">
+          <div class="panel-heading"><h2>Live hits</h2><span id="hit-count" class="pill">0 genes with reads</span></div>
+          <div class="hits-columns"><span>Gene / reads</span><span>Ref / alt</span><span>Depth</span></div>
+          <p id="empty-hits" class="empty"><span class="empty-orbit"></span>Reads become discoveries.<br>Supporting evidence will appear here.</p>
+          <div id="hits"></div>
+        </section>
       </div>
+      <footer class="scan-progress">
+        <div class="progress-copy"><span class="scan-pulse"></span><div><strong id="progress-label">Ready when you are</strong><small id="bytes-progress">Select an input to begin your scan</small></div></div>
+        <div class="progress-track" role="progressbar" aria-label="Scan progress" aria-valuemin="0" aria-valuemax="100"><span id="progress-fill"></span></div>
+        <strong id="progress-percent" class="progress-percent">0<span>%</span></strong><span class="progress-divider"></span><div class="eta"><span id="eta">ETA —</span><small id="elapsed-small">LOCAL & PRIVATE</small></div>
+        <button id="open-report" class="button primary" disabled>Open report<svg><use href="#i-arrow"/></svg></button>
+      </footer>
     </section>
-    <section id="report-page" hidden>
-      <div class="page-title"><div><p class="eyebrow">ANALYSIS COMPLETE</p><h1>Research report</h1><p id="report-file" class="lede"></p></div><div class="report-actions"><button id="back" class="button secondary">← Scan</button><button id="export" class="button secondary">Export JSON</button><button id="print" class="button primary">Print / PDF</button></div></div>
-      <div class="warning">Research and education only. Not a medical diagnosis. Talk to a doctor or genetic counselor about any result.</div>
-      <p id="report-engine" class="engine-note"></p><div id="qc-cards" class="qc-grid"></div>
-      <section class="glass sample-summary"><h2>Whole-sample checks</h2><div id="sample-checks"></div></section>
-      <nav id="section-nav" class="section-nav" aria-label="Report sections"></nav><div id="traits"></div>
-      <section class="glass table-section"><h2>Depth per gene</h2><div id="depth-chart" class="depth-chart"></div></section>
-      <section class="glass table-section"><h2>Variant evidence</h2><div class="table-scroll"><table><thead><tr><th>Gene / rsID</th><th>Genotype</th><th>Ref / alt reads</th><th>Depth</th><th>GQ</th><th>Risk allele</th><th>Evidence / source</th></tr></thead><tbody id="variant-rows"></tbody></table></div></section>
-      <section class="glass limitations"><h2>What this cannot tell you</h2><ul id="limitations"></ul></section>
-    </section>
+    <section id="report-page" hidden></section>
   </main>
-  <footer>HELIXSCAN <span>Research and education only. Not a medical test.</span></footer>
+
+  <dialog id="hit-dialog" class="small-dialog"><button class="dialog-close" aria-label="Close"><svg><use href="#i-close"/></svg></button><div id="hit-detail"></div></dialog>
+  <dialog id="reports-dialog" class="app-dialog"><button class="dialog-close" aria-label="Close"><svg><use href="#i-close"/></svg></button><span class="eyebrow">YOUR WORKSPACE</span><h2>Recent reports</h2><div id="mobile-recent-reports"></div></dialog>
+  <dialog id="about-dialog" class="app-dialog"><button class="dialog-close" aria-label="Close"><svg><use href="#i-close"/></svg></button><span class="eyebrow">FOCUSED, NOT DIAGNOSTIC</span><h2>About the panel</h2><svg class="about-helix"><use href="#i-helix"/></svg><p>HelixScan reads a focused panel of genetic markers from your FASTQ file. It reports only what this panel observed—not a whole-genome interpretation.</p><dl><div><dt>Panel markers</dt><dd id="panel-markers">—</dd></div><div><dt>Genes represented</dt><dd id="panel-genes">—</dd></div><div><dt>Evidence groups</dt><dd id="panel-traits">—</dd></div></dl></dialog>
+  <dialog id="disclaimer-dialog" class="app-dialog"><button class="dialog-close" aria-label="Close"><svg><use href="#i-close"/></svg></button><h2>Read with context</h2><p id="disclaimer-text">Research and education only. Not a medical diagnosis. Talk to a doctor or genetic counselor about any result.</p></dialog>
   <script>window.pendingReportId=null;function loadReport(id){if(window.loadReportById){window.loadReportById(id);}else{window.pendingReportId=id;}}</script>
 </body>
 </html>

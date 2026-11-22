@@ -1,10 +1,11 @@
 use crate::{BackendArg, load_panel, scan_command};
 use axum::{
     Json, Router,
+    body::Body,
     extract::{DefaultBodyLimit, Multipart, Path, State},
-    http::{StatusCode, header},
+    http::{HeaderMap, StatusCode, header},
     response::sse::Event,
-    response::{Html, sse::Sse},
+    response::{Html, IntoResponse, Response, sse::Sse},
     routing::{get, post},
 };
 use helixscan_core::{Panel, report::Report, scan::Progress};
@@ -50,7 +51,10 @@ const HELIX_JS: &str = include_str!("../../../web/helix.js");
 const STYLES: &str = include_str!("../../../web/styles.css");
 const VISUALS: &str = include_str!("../../../web/visuals.css");
 const RESPONSIVE: &str = include_str!("../../../web/responsive.css");
+const PRINT: &str = include_str!("../../../web/print.css");
 const THREE: &str = include_str!("../../../web/vendor/three.module.js");
+const HELIX_POSTER: &[u8] = include_bytes!("../../../web/art/00-helix.webp");
+const HELIX_VIDEO: &[u8] = include_bytes!("../../../web/art/09-helix-loop.mp4");
 
 #[derive(Clone)]
 pub struct AppState {
@@ -153,7 +157,9 @@ pub fn router(
         .route("/styles.css", get(styles_css))
         .route("/responsive.css", get(responsive_css))
         .route("/visuals.css", get(visuals_css))
+        .route("/print.css", get(print_css))
         .route("/vendor/three.module.js", get(three_js))
+        .route("/art/{filename}", get(art))
         .route("/api/panel", get(panel_summary))
         .route("/api/telemetry", get(telemetry))
         .route("/api/files", get(files))
@@ -200,8 +206,121 @@ async fn responsive_css() -> impl axum::response::IntoResponse {
 async fn visuals_css() -> impl axum::response::IntoResponse {
     ([(header::CONTENT_TYPE, "text/css; charset=utf-8")], VISUALS)
 }
+async fn print_css() -> impl axum::response::IntoResponse {
+    ([(header::CONTENT_TYPE, "text/css; charset=utf-8")], PRINT)
+}
 async fn index() -> Html<&'static str> {
     Html(INDEX)
+}
+
+async fn art(Path(filename): Path<String>, request_headers: HeaderMap) -> Response {
+    // Embed an exact set of named assets; a URL never becomes a filesystem path.
+    let body: &[u8] = match filename.as_str() {
+        "00-helix.webp" => HELIX_POSTER,
+        "01-ancestry.webp" => include_bytes!("../../../web/art/01-ancestry.webp"),
+        "02-body.webp" => include_bytes!("../../../web/art/02-body.webp"),
+        "03-heart.webp" => include_bytes!("../../../web/art/03-heart.webp"),
+        "04-medicines.webp" => include_bytes!("../../../web/art/04-medicines.webp"),
+        "05-telomere.webp" => include_bytes!("../../../web/art/05-telomere.webp"),
+        "06-carrier.webp" => include_bytes!("../../../web/art/06-carrier.webp"),
+        "07-limits.webp" => include_bytes!("../../../web/art/07-limits.webp"),
+        "08-cover.webp" => include_bytes!("../../../web/art/08-cover.webp"),
+        "09-helix-loop.mp4" => HELIX_VIDEO,
+        _ => return StatusCode::NOT_FOUND.into_response(),
+    };
+    let range_supported = filename == "09-helix-loop.mp4";
+    let content_type = if range_supported {
+        "video/mp4"
+    } else {
+        "image/webp"
+    };
+    let mut response = Response::builder()
+        .header(header::CONTENT_TYPE, content_type)
+        .header(header::CACHE_CONTROL, "public, max-age=31536000, immutable")
+        .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff");
+    if range_supported {
+        response = response.header(header::ACCEPT_RANGES, "bytes");
+    }
+    let length = body.len();
+    let Some(range) = request_headers
+        .get(header::RANGE)
+        .and_then(|v| v.to_str().ok())
+    else {
+        return response
+            .header(header::CONTENT_LENGTH, length.to_string())
+            .body(Body::from(body))
+            .unwrap();
+    };
+    if !range_supported {
+        return response
+            .header(header::CONTENT_LENGTH, length.to_string())
+            .body(Body::from(body))
+            .unwrap();
+    }
+    let Some(spec) = range.strip_prefix("bytes=") else {
+        return range_not_satisfiable(length);
+    };
+    // A multi-range response would require multipart/byteranges; reject it instead
+    // of accidentally coalescing two ranges into unrelated bytes.
+    if spec.contains(',') {
+        return range_not_satisfiable(length);
+    }
+    let Some((start, end)) = spec.split_once('-') else {
+        return range_not_satisfiable(length);
+    };
+    if start.is_empty() {
+        let Ok(suffix) = end.parse::<usize>() else {
+            return range_not_satisfiable(length);
+        };
+        if suffix == 0 {
+            return range_not_satisfiable(length);
+        }
+        let first = length.saturating_sub(suffix);
+        return ranged_body(response, body, first, length - 1, length);
+    }
+    let Ok(first) = start.parse::<usize>() else {
+        return range_not_satisfiable(length);
+    };
+    if first >= length {
+        return range_not_satisfiable(length);
+    }
+    let last = if end.is_empty() {
+        length - 1
+    } else {
+        match end.parse::<usize>() {
+            Ok(value) => value.min(length - 1),
+            Err(_) => return range_not_satisfiable(length),
+        }
+    };
+    if first > last {
+        return range_not_satisfiable(length);
+    }
+    ranged_body(response, body, first, last, length)
+}
+
+fn ranged_body(
+    mut response: axum::http::response::Builder,
+    body: &'static [u8],
+    first: usize,
+    last: usize,
+    length: usize,
+) -> Response {
+    response = response
+        .status(StatusCode::PARTIAL_CONTENT)
+        .header(
+            header::CONTENT_RANGE,
+            format!("bytes {first}-{last}/{length}"),
+        )
+        .header(header::CONTENT_LENGTH, (last - first + 1).to_string());
+    response.body(Body::from(&body[first..=last])).unwrap()
+}
+
+fn range_not_satisfiable(length: usize) -> Response {
+    Response::builder()
+        .status(StatusCode::RANGE_NOT_SATISFIABLE)
+        .header(header::CONTENT_RANGE, format!("bytes */{length}"))
+        .body(Body::empty())
+        .unwrap()
 }
 
 #[derive(Serialize)]
