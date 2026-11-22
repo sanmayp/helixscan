@@ -68,6 +68,124 @@ fn low_quality_variant_position_rejects_vote() {
     assert_eq!(index.vote(&seq, &q), None);
 }
 #[test]
+fn shared_marker_traversal_preserves_per_read_evidence_and_votes() {
+    use std::sync::Arc;
+    let p = panel(variant("rs1", "A", "C"));
+    let (seq, _) = crate::allele_context(&p.variants[0], "C");
+    let qual = vec![35; seq.len()];
+    let random = |(offset, length): (usize, usize)| {
+        (0..length)
+            .map(|i| b"ACGT"[(offset + i * 7 + i / 3 + i / 11) % 4])
+            .collect::<Vec<_>>()
+    };
+    let y = random((0, 31)).repeat(7);
+    let control = random((61, 31)).repeat(7);
+    let x = random((107, 31)).repeat(7);
+    let mixed = [
+        b"TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT".as_slice(),
+        y.as_slice(),
+        b"TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT".as_slice(),
+        control.as_slice(),
+        b"TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT".as_slice(),
+        x.as_slice(),
+        b"TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT".as_slice(),
+    ]
+    .concat();
+    let mixed_qual = vec![35; mixed.len()];
+    let y_key = crate::kmer(&y[..31]).unwrap();
+    let control_key = crate::kmer(&control[..31]).unwrap();
+    let x_key = crate::kmer(&x[..31]).unwrap();
+    assert_ne!(y_key, control_key);
+    assert_ne!(y_key, x_key);
+    assert_ne!(control_key, x_key);
+    let index = Arc::new(crate::marker::MarkerIndex {
+        y: [y_key].into_iter().collect(),
+        control: [control_key].into_iter().collect(),
+        x: [x_key].into_iter().collect(),
+    });
+    let panel_index = crate::PanelIndex::new(&p);
+    for level in [
+        crate::encode::SimdLevel::Scalar,
+        crate::encode::SimdLevel::Avx2,
+        crate::encode::SimdLevel::Avx512,
+    ] {
+        if !level.available() {
+            continue;
+        }
+        let mut scanner = crate::marker::MarkerScanner::new(index.clone(), level);
+        let mut one = crate::marker::MarkerLocal::default();
+        scanner.add(&y, &mut one);
+        assert_eq!(
+            (one.y, one.control),
+            (1, 0),
+            "multiple Y k-mers contribute only once to this read"
+        );
+        let mut mixed_only = crate::marker::MarkerLocal::default();
+        scanner.add(&mixed, &mut mixed_only);
+        assert_eq!((mixed_only.y, mixed_only.control), (0, 1));
+        let mut expected = crate::marker::MarkerLocal::default();
+        expected.merge(&one);
+        expected.merge(&mixed_only);
+        let mut separate_votes = vec![[0u32; 4]; p.variants.len()];
+        let mut encoder = crate::encode::KmerEncoder::new(level);
+        let mut hits = Vec::new();
+        crate::index::scan_read_with(
+            &panel_index,
+            &seq,
+            &qual,
+            &mut separate_votes,
+            &mut encoder,
+            &mut hits,
+        );
+        let mut shared_votes = vec![[0u32; 4]; p.variants.len()];
+        let mut combined = crate::marker::MarkerLocal::default();
+        for read in [&y[..], &mixed[..], &seq[..]] {
+            let qual = if read.len() == seq.len() {
+                &qual[..]
+            } else {
+                &mixed_qual[..read.len()]
+            };
+            crate::index::scan_read_with_markers(
+                &panel_index,
+                (read, qual),
+                &mut shared_votes,
+                &mut encoder,
+                &mut hits,
+                &mut scanner,
+                &mut combined,
+            );
+        }
+        assert_eq!(expected.y, 1, "one per qualifying read, not per k-mer");
+        assert_eq!(expected.control, 1);
+        assert_eq!(combined.y, expected.y);
+        assert_eq!(combined.control, expected.control);
+        assert_eq!(shared_votes, separate_votes);
+    }
+}
+
+#[test]
+fn filtered_variant_votes_match_full_vote_logic() {
+    let v = variant("rs1", "A", "C");
+    let index = crate::PanelIndex::new(&panel(v.clone()));
+    for allele in ["A", "C"] {
+        let (seq, _) = crate::allele_context(&v, allele);
+        let qual = vec![35; seq.len()];
+        let reverse = crate::reverse_complement(&seq);
+        for read in [&seq[..], &reverse[..]] {
+            let mut encoder = crate::encode::KmerEncoder::new(index.simd);
+            let mut hits = Vec::new();
+            index.read_hits_with(read, &mut encoder, &mut hits);
+            assert_eq!(
+                index.vote_variant_hits(read, &qual, 0, &hits),
+                index
+                    .vote_hits(read, &qual, &hits)
+                    .map(|(_, allele)| allele)
+            );
+        }
+    }
+}
+
+#[test]
 fn insertion_and_deletion_reads_vote() {
     let mut del = variant("del", "T", "CTT");
     del.reference = "TCTT".into();

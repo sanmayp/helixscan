@@ -195,6 +195,8 @@ pub fn gpu_scan_with_index(
                 let mut qc = QcLocal::default();
                 let mut markers = helixscan_core::marker::MarkerLocal::default();
                 let mut scanner = helixscan_core::marker::MarkerScanner::new(marker_index, simd);
+                let mut previous = vec![[0u32; 4]; index.variants.len()];
+                let mut delta = vec![[0u32; 4]; index.variants.len()];
                 while let Ok(batch) = rx.recv() {
                     if let Some(p) = progress {
                         p.bytes.fetch_add(batch.batch.bytes, Ordering::Relaxed);
@@ -214,7 +216,13 @@ pub fn gpu_scan_with_index(
                         }
                     }
                     if let Some(p) = progress {
-                        p.update_votes(&counts);
+                        for ((now, old), delta) in counts.iter().zip(&previous).zip(&mut delta) {
+                            for allele in 0..4 {
+                                delta[allele] = now[allele] - old[allele];
+                            }
+                        }
+                        p.update_votes(&delta);
+                        previous.copy_from_slice(&counts);
                     }
                 }
                 let _ = local.send((counts, qc, markers));

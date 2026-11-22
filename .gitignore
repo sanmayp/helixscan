@@ -12,5 +12,10 @@
 !data/panel.drop.log
 !bench/RESULTS.md
 helixscan-runs/
+!/helixscan-runs/
+/helixscan-runs/*
+!helixscan-runs/run-m7-benchmarks.sh
+!helixscan-runs/m7-*.stdout
+!helixscan-runs/m7-*.stderr
 __pycache__/
 node_modules/

@@ -1,0 +1,3 @@
+fixture=bench/data/50gb.fastq build=M7-optimized threads=4 backend=gpu
+helixscan-runs/50gb-gpu-report.json: 156967113 reads; 77 called; panel coverage 100.0%
+phase=gpu50-complete

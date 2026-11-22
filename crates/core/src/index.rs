@@ -183,9 +183,35 @@ impl PanelIndex {
         self.vote_hits(seq, qual, &self.read_hits(seq))
     }
     pub fn vote_hits(&self, seq: &[u8], qual: &[u8], hits: &[ReadHit]) -> Option<(usize, u8)> {
+        self.vote_hits_filtered(seq, qual, None, hits)
+    }
+    /// Vote one already identified variant without copying its hits into a second vector.
+    pub fn vote_variant_hits(
+        &self,
+        seq: &[u8],
+        qual: &[u8],
+        variant: usize,
+        hits: &[ReadHit],
+    ) -> Option<u8> {
+        self.vote_hits_filtered(seq, qual, Some(variant), hits)
+            .map(|(called, allele)| {
+                debug_assert_eq!(called, variant);
+                allele
+            })
+    }
+    fn vote_hits_filtered(
+        &self,
+        seq: &[u8],
+        qual: &[u8],
+        selected: Option<usize>,
+        hits: &[ReadHit],
+    ) -> Option<(usize, u8)> {
         let mut per_variant: PerVariant = HashMap::new();
         for h in hits {
             let variant = h.variant as usize;
+            if selected.is_some_and(|selected| selected != variant) {
+                continue;
+            }
             let Some(v) = self.variants.get(variant) else {
                 continue;
             };
@@ -257,7 +283,7 @@ impl PanelIndex {
     }
 }
 
-/// Count votes without allocating a per-variant map on the read hot path.
+/// Per-variant event locations: count and bitmask of supporting alleles.
 type PerVariant = HashMap<usize, HashMap<usize, (usize, u8)>>;
 
 pub fn scan_read(index: &PanelIndex, seq: &[u8], qual: &[u8], counts: &mut [[u32; 4]]) {
@@ -280,12 +306,52 @@ pub fn scan_read_with(
         .map(|h| h.variant as usize)
         .collect::<HashSet<_>>();
     for v in variants.drain() {
-        let sub: Vec<_> = hits
-            .iter()
-            .copied()
-            .filter(|h| h.variant as usize == v)
-            .collect();
-        if let Some((v, allele)) = index.vote_hits(seq, qual, &sub) {
+        if let Some(allele) = index.vote_variant_hits(seq, qual, v, hits) {
+            counts[v][allele.min(3) as usize] += 1;
+        }
+    }
+}
+
+/// Scan panel and sample markers with a single encoded k-mer traversal.
+/// Marker evidence stays boolean per read, never a count of matching k-mers.
+pub fn scan_read_with_markers(
+    index: &PanelIndex,
+    read: (&[u8], &[u8]),
+    counts: &mut [[u32; 4]],
+    encoder: &mut crate::encode::KmerEncoder,
+    hits: &mut Vec<ReadHit>,
+    scanner: &mut crate::marker::MarkerScanner,
+    local: &mut crate::marker::MarkerLocal,
+) {
+    let (seq, qual) = read;
+    hits.clear();
+    let mut y = false;
+    let mut control = false;
+    encoder.for_each_key(seq, |key| {
+        crate::marker::observe_marker_key(&scanner.index, key, &mut y, &mut control);
+        if let Some(table_hits) = index.lookup_ref(key.canonical) {
+            for &hit in table_hits
+                .iter()
+                .filter(|hit| (hit.strand == 0) == key.forward)
+            {
+                hits.push(ReadHit {
+                    variant: hit.variant,
+                    allele: hit.allele,
+                    offset: hit.offset,
+                    strand: hit.strand,
+                    start: key.start as u32,
+                });
+            }
+        }
+    });
+    local.y += u64::from(y);
+    local.control += u64::from(control);
+    let mut variants = hits
+        .iter()
+        .map(|h| h.variant as usize)
+        .collect::<HashSet<_>>();
+    for v in variants.drain() {
+        if let Some(allele) = index.vote_variant_hits(seq, qual, v, hits) {
             counts[v][allele.min(3) as usize] += 1;
         }
     }

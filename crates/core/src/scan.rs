@@ -32,10 +32,10 @@ impl Progress {
             ..Self::default()
         }
     }
-    pub fn update_votes(&self, counts: &[[u32; 4]]) {
-        for (live, counts) in self.votes.iter().zip(counts) {
-            for (live, count) in live.iter().zip(counts) {
-                live.fetch_add(*count, Ordering::Relaxed);
+    pub fn update_votes(&self, delta: &[[u32; 4]]) {
+        for (live, delta) in self.votes.iter().zip(delta) {
+            for (live, delta) in live.iter().zip(delta) {
+                live.fetch_add(*delta, Ordering::Relaxed);
             }
         }
     }
@@ -135,6 +135,8 @@ pub fn scan_path_with_context(
                 let mut marker_scanner = MarkerScanner::new(markers_index, level);
                 let mut encoder = crate::encode::KmerEncoder::new(level);
                 let mut hits = Vec::new();
+                let mut previous = vec![[0u32; 4]; index.variants.len()];
+                let mut delta = vec![[0u32; 4]; index.variants.len()];
                 while let Ok(mut batch) = rx.recv() {
                     if let Some(p) = progress {
                         p.bytes.fetch_add(batch.bytes, Ordering::Relaxed);
@@ -144,22 +146,29 @@ pub fn scan_path_with_context(
                     for r in &batch.records {
                         let seq = &batch.buf[r.seq_off..r.seq_off + r.seq_len];
                         let qual = &batch.buf[r.qual_off..r.qual_off + r.seq_len];
-                        crate::index::scan_read_with(
+                        crate::index::scan_read_with_markers(
                             &index,
-                            seq,
-                            qual,
+                            (seq, qual),
                             &mut c,
                             &mut encoder,
                             &mut hits,
+                            &mut marker_scanner,
+                            &mut m,
                         );
+                        marker_scanner.add_telomere(seq, &mut m);
                         q.add(seq, qual);
-                        marker_scanner.add(seq, &mut m);
                         if let Some(p) = progress {
                             p.bases.fetch_add(r.seq_len as u64, Ordering::Relaxed);
                         }
                     }
                     if let Some(p) = progress {
-                        p.update_votes(&c);
+                        for ((now, old), delta) in c.iter().zip(&previous).zip(&mut delta) {
+                            for allele in 0..4 {
+                                delta[allele] = now[allele] - old[allele];
+                            }
+                        }
+                        p.update_votes(&delta);
+                        previous.copy_from_slice(&c);
                     }
                     batch.records.clear();
                     let _ = recycle_tx.try_send(std::mem::take(&mut batch.buf));

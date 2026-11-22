@@ -1,0 +1,73 @@
+fixture=bench/data/10gb.fastq build=M7-optimized threads=2 pass=first
+input	level	bytes	seconds	MiB/s	reads	agreement	engine
+encoding	Scalar	16777216	0.030980	516.468	0	keys=0	CPU
+scan	Scalar	9999999884	171.186157	55.710	31407338	scalar baseline	CPU Scalar; 2 worker threads
+encoding	Avx2	16777216	0.031396	509.623	0	keys=0	CPU
+scan	Avx2	9999999884	175.717466	54.273	31407338	100% calls+checks	CPU Avx2; 2 worker threads
+encoding	Avx512	16777216	0.031366	510.109	0	keys=0	CPU
+scan	Avx512	9999999884	188.383088	50.624	31407338	100% calls+checks	CPU Avx512; 2 worker threads
+fixture=bench/data/10gb.fastq build=M7-optimized threads=2 pass=repeat
+input	level	bytes	seconds	MiB/s	reads	agreement	engine
+encoding	Scalar	16777216	0.031043	515.418	0	keys=0	CPU
+scan	Scalar	9999999884	171.761882	55.523	31407338	scalar baseline	CPU Scalar; 2 worker threads
+encoding	Avx2	16777216	0.031640	505.692	0	keys=0	CPU
+scan	Avx2	9999999884	171.775009	55.519	31407338	100% calls+checks	CPU Avx2; 2 worker threads
+encoding	Avx512	16777216	0.031571	506.798	0	keys=0	CPU
+scan	Avx512	9999999884	187.720433	50.803	31407338	100% calls+checks	CPU Avx512; 2 worker threads
+fixture=bench/data/10gb.fastq build=M7-optimized threads=4 pass=first
+input	level	bytes	seconds	MiB/s	reads	agreement	engine
+encoding	Scalar	16777216	0.031056	515.191	0	keys=0	CPU
+scan	Scalar	9999999884	85.177413	111.963	31407338	scalar baseline	CPU Scalar; 4 worker threads
+encoding	Avx2	16777216	0.031485	508.178	0	keys=0	CPU
+scan	Avx2	9999999884	85.375627	111.703	31407338	100% calls+checks	CPU Avx2; 4 worker threads
+encoding	Avx512	16777216	0.031510	507.778	0	keys=0	CPU
+scan	Avx512	9999999884	93.606999	101.881	31407338	100% calls+checks	CPU Avx512; 4 worker threads
+fixture=bench/data/10gb.fastq build=M7-optimized threads=4 pass=repeat
+input	level	bytes	seconds	MiB/s	reads	agreement	engine
+encoding	Scalar	16777216	0.031250	512.006	0	keys=0	CPU
+scan	Scalar	9999999884	85.210590	111.920	31407338	scalar baseline	CPU Scalar; 4 worker threads
+encoding	Avx2	16777216	0.031762	503.752	0	keys=0	CPU
+scan	Avx2	9999999884	85.222715	111.904	31407338	100% calls+checks	CPU Avx2; 4 worker threads
+encoding	Avx512	16777216	0.031823	502.784	0	keys=0	CPU
+scan	Avx512	9999999884	93.460316	102.041	31407338	100% calls+checks	CPU Avx512; 4 worker threads
+fixture=bench/data/10gb.fastq build=M7-optimized threads=6 pass=first
+input	level	bytes	seconds	MiB/s	reads	agreement	engine
+encoding	Scalar	16777216	0.031199	512.841	0	keys=0	CPU
+scan	Scalar	9999999884	58.158392	163.979	31407338	scalar baseline	CPU Scalar; 6 worker threads
+encoding	Avx2	16777216	0.032216	496.642	0	keys=0	CPU
+scan	Avx2	9999999884	58.246763	163.730	31407338	100% calls+checks	CPU Avx2; 6 worker threads
+encoding	Avx512	16777216	0.031498	507.971	0	keys=0	CPU
+scan	Avx512	9999999884	63.824298	149.422	31407338	100% calls+checks	CPU Avx512; 6 worker threads
+fixture=bench/data/10gb.fastq build=M7-optimized threads=6 pass=repeat
+input	level	bytes	seconds	MiB/s	reads	agreement	engine
+encoding	Scalar	16777216	0.031158	513.509	0	keys=0	CPU
+scan	Scalar	9999999884	58.104915	164.130	31407338	scalar baseline	CPU Scalar; 6 worker threads
+encoding	Avx2	16777216	0.031589	506.511	0	keys=0	CPU
+scan	Avx2	9999999884	58.248969	163.724	31407338	100% calls+checks	CPU Avx2; 6 worker threads
+encoding	Avx512	16777216	0.030383	526.602	0	keys=0	CPU
+scan	Avx512	9999999884	64.117867	148.738	31407338	100% calls+checks	CPU Avx512; 6 worker threads
+fixture=bench/data/10gb.fastq build=M7-optimized threads=11 pass=first
+input	level	bytes	seconds	MiB/s	reads	agreement	engine
+encoding	Scalar	16777216	0.031152	513.615	0	keys=0	CPU
+scan	Scalar	9999999884	46.215663	206.353	31407338	scalar baseline	CPU Scalar; 11 worker threads
+encoding	Avx2	16777216	0.031230	512.333	0	keys=0	CPU
+scan	Avx2	9999999884	46.575779	204.758	31407338	100% calls+checks	CPU Avx2; 11 worker threads
+encoding	Avx512	16777216	0.030255	528.841	0	keys=0	CPU
+scan	Avx512	9999999884	50.903328	187.350	31407338	100% calls+checks	CPU Avx512; 11 worker threads
+fixture=bench/data/10gb.fastq build=M7-optimized threads=11 pass=repeat
+input	level	bytes	seconds	MiB/s	reads	agreement	engine
+encoding	Scalar	16777216	0.030928	517.329	0	keys=0	CPU
+scan	Scalar	9999999884	46.156638	206.617	31407338	scalar baseline	CPU Scalar; 11 worker threads
+encoding	Avx2	16777216	0.033144	482.749	0	keys=0	CPU
+scan	Avx2	9999999884	46.339598	205.801	31407338	100% calls+checks	CPU Avx2; 11 worker threads
+encoding	Avx512	16777216	0.031256	511.905	0	keys=0	CPU
+scan	Avx512	9999999884	50.798897	187.735	31407338	100% calls+checks	CPU Avx512; 11 worker threads
+fixture=bench/data/50gb.fastq build=M7-optimized threads=4 pass=first
+input	level	bytes	seconds	MiB/s	reads	agreement	engine
+encoding	Scalar	16777216	0.031021	515.776	0	keys=0	CPU
+scan	Scalar	49999999950	424.687723	112.279	156967113	scalar baseline	CPU Scalar; 4 worker threads
+encoding	Avx2	16777216	0.030122	531.167	0	keys=0	CPU
+scan	Avx2	49999999950	424.641346	112.292	156967113	100% calls+checks	CPU Avx2; 4 worker threads
+encoding	Avx512	16777216	0.031227	512.381	0	keys=0	CPU
+scan	Avx512	49999999950	466.436032	102.230	156967113	100% calls+checks	CPU Avx512; 4 worker threads
+phase=scaling-complete

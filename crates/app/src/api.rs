@@ -615,11 +615,16 @@ async fn report_json(
     Path(id): Path<String>,
     State(state): State<AppState>,
 ) -> Result<Json<JobReport>, ApiError> {
-    let saved = saved_report(&state, &id);
-    let job = lookup(&state, &id)?;
-    if let Some(Ok(report)) = saved {
+    if let Some(report) = saved_report(&state, &id) {
+        let report = report.map_err(|error| {
+            ApiError(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                format!("saved report is invalid: {error}"),
+            )
+        })?;
         return Ok(Json(report));
     }
+    let job = lookup(&state, &id)?;
     let outcome = job
         .outcome
         .lock()

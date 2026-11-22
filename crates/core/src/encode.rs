@@ -333,6 +333,38 @@ impl KmerEncoder {
             self.emitted += 1;
         }
     }
+
+    /// Visit the same canonical keys without allocating a vector in read hot paths.
+    pub fn for_each_key(&mut self, seq: &[u8], mut visit: impl FnMut(KmerKey)) {
+        self.forward = 0;
+        self.reverse = 0;
+        self.run = 0;
+        if !self.level.available() {
+            for_each_scalar_key(seq, visit);
+            return;
+        }
+        encode_into(seq, &mut self.encoded, self.level).expect("runtime SIMD check");
+        for (index, &base) in self.encoded.iter().enumerate() {
+            if base >= 4 {
+                self.forward = 0;
+                self.reverse = 0;
+                self.run = 0;
+                continue;
+            }
+            self.forward = ((self.forward << 2) | u64::from(base)) & KMER_MASK;
+            self.reverse = (self.reverse >> 2) | (u64::from(3 - base) << 60);
+            self.run += 1;
+            if self.run < KMER_SIZE {
+                continue;
+            }
+            self.emitted += 1;
+            visit(KmerKey {
+                canonical: self.forward.min(self.reverse),
+                forward: self.forward <= self.reverse,
+                start: index + 1 - KMER_SIZE,
+            });
+        }
+    }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct KmerKey {
@@ -342,6 +374,10 @@ pub struct KmerKey {
 }
 pub fn scalar_keys(seq: &[u8], out: &mut Vec<KmerKey>) {
     out.clear();
+    for_each_scalar_key(seq, |key| out.push(key));
+}
+
+fn for_each_scalar_key(seq: &[u8], mut visit: impl FnMut(KmerKey)) {
     let (mut forward, mut reverse, mut run) = (0, 0, 0);
     for (index, &byte) in seq.iter().enumerate() {
         let base = encode_base(byte);
@@ -355,7 +391,7 @@ pub fn scalar_keys(seq: &[u8], out: &mut Vec<KmerKey>) {
         reverse = (reverse >> 2) | (u64::from(3 - base) << 60);
         run += 1;
         if run >= KMER_SIZE {
-            out.push(KmerKey {
+            visit(KmerKey {
                 canonical: forward.min(reverse),
                 forward: forward <= reverse,
                 start: index + 1 - KMER_SIZE,
@@ -483,5 +519,20 @@ mod tests {
         assert_eq!(keys.len(), 1);
         assert_eq!(keys[0].canonical, crate::kmer(text).unwrap());
         assert_eq!(keys[0].start, 0);
+    }
+
+    #[test]
+    fn visitor_matches_vector_keys_at_all_simd_levels() {
+        let seq = b"ACGTACGTACGTACGTACGTACGTACGTACGNNacgtn!!ACGTACGTACGTACGTACGTACGTACGTACG";
+        let mut expected = Vec::new();
+        scalar_keys(seq, &mut expected);
+        for level in [SimdLevel::Scalar, SimdLevel::Avx2, SimdLevel::Avx512] {
+            if !level.available() {
+                continue;
+            }
+            let mut actual = Vec::new();
+            KmerEncoder::new(level).for_each_key(seq, |key| actual.push(key));
+            assert_eq!(actual, expected, "visitor {level:?}");
+        }
     }
 }
