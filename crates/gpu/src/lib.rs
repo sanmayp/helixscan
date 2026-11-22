@@ -7,4 +7,5 @@ pub mod probe;
 pub mod scan;
 
 pub use compute::{GpuConfig, GpuMatcher, GpuStats, Tune};
+pub use probe::measured_slow_p5000;
 pub use scan::{Backend, Selection, scan_path};
