@@ -59,3 +59,14 @@ Next: M4 real AVX2 and AVX-512 encoders, parity tests and benchmark.
 - Validation: formatting, strict workspace Clippy and **28 workspace tests** pass. The SIMD encoder is in the actual scanner, but this fixture does **not meet the 1.5 GB/s SPEC target**; optimization remains required. M7 will report both measurements and limitations.
 
 Next: M5 generic NVIDIA Vulkan compute with measured CPU fallback, then app/UI and final benchmarking.
+
+## M5 — complete; GPU candidate is slower, so auto selects CPU
+
+- Implemented generic NVIDIA Vulkan/WGSL k-mer candidate matching using runtime adapter limits, no vendor features, bounded hit output, two pending dispatches, and conservative buffers capped at the requested GPU-memory limit.
+- CPU quality voting, genotype calls, QC, marker checks, and report inputs are shared with the GPU path. Raw hit parity covers strands, ambiguous bases, long reads, exact-table probing, multi-read splitting, calibration, and hit-capacity exhaustion.
+- Auto mode validates the complete biological result before selecting a backend; a mismatch is never silently treated as a timing result. Forced GPU errors and fallback reasons are preserved. Tuning cache, memory policy, and adapter selection are unit tested.
+- Fixed the calibration generator's four-base indexing and narrowed report parity to biological fields, retaining the intentionally distinct CPU/GPU engine metadata. Full report content is otherwise identical.
+- Release benchmark, 181 MB / 600,000-read fixture, 11 threads, Quadro P5000, driver 580.196.07, workgroup 64, 256-read tuned batches, 2,048 MiB cap: CPU **1.109 s**; forced GPU **7.944 s wall clock**; GPU candidate **6.411 s**. Auto selected CPU after matching the complete result. GPU-only candidate enumeration did not improve end-to-end throughput.
+- Validation: formatting, strict workspace Clippy, and **28 workspace tests** pass. `helixscan-gpu-bench` records real CPU/forced-GPU/auto comparisons.
+
+Next: M6 app CLI, SSE scan workflow, vendored 3D scan UI, report UI and small-screen layout.

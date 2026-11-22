@@ -646,7 +646,14 @@ name = "helixscan-gpu"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bytemuck",
+ "clap",
+ "crossbeam-channel",
+ "helixscan-core",
+ "helixscan-panel",
  "pollster",
+ "serde",
+ "serde_json",
  "wgpu",
 ]
 

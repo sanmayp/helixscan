@@ -7,8 +7,19 @@ license.workspace = true
 [dependencies]
 wgpu.workspace = true
 anyhow.workspace = true
+clap.workspace = true
 pollster = "0.4"
+crossbeam-channel.workspace = true
+helixscan-core = { path = "../core" }
+helixscan-panel = { path = "../panel" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = "1"
+bytemuck = { version = "1", features = ["extern_crate_alloc"] }
 
 [[bin]]
 name = "helixscan-gpu-probe"
 path = "src/bin/probe.rs"
+
+[[bin]]
+name = "helixscan-gpu-bench"
+path = "src/bin/helixscan-gpu-bench.rs"

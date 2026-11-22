@@ -124,6 +124,24 @@ pub fn scan_path_with_simd(
             .join()
             .map_err(|_| anyhow::anyhow!("FASTQ reader panicked"))?
     })?;
+    Ok(finish(
+        panel,
+        counts,
+        qc,
+        markers,
+        start.elapsed().as_secs_f64(),
+        format!("CPU {level:?}; {} worker threads", workers),
+    ))
+}
+/// Shared genotype and sample-check finalization for CPU and GPU backends.
+pub fn finish(
+    panel: &Panel,
+    counts: Vec<[u32; 4]>,
+    qc: QcLocal,
+    markers: MarkerLocal,
+    elapsed_seconds: f64,
+    engine: String,
+) -> ScanResult {
     let calls = panel
         .variants
         .iter()
@@ -143,11 +161,11 @@ pub fn scan_path_with_simd(
     let called = calls.iter().filter(|c| c.called).count();
     let qc = qc.finish(called, panel.variants.len());
     let checks = sample_checks(panel, &calls, &qc, &markers);
-    Ok(ScanResult {
+    ScanResult {
         calls,
         qc,
         checks,
-        elapsed_seconds: start.elapsed().as_secs_f64(),
-        engine: format!("CPU {level:?}; {} worker threads", workers),
-    })
+        elapsed_seconds,
+        engine,
+    }
 }
