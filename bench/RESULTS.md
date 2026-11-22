@@ -118,6 +118,27 @@ All gzip outputs match uncompressed biological output byte-for-byte. A separate 
 
 Validation: `cargo fmt --all -- --check`, `cargo test --workspace` (**48 tests**) and `cargo clippy --workspace --all-targets -- -D warnings` pass. The new gzip test compares offsets and batch bytes against uncompressed input at every chunk boundary for two records. Earlier timing-wrapper failures and test-only compilation errors were fixed; they are not scanner correctness failures. Final biological output equivalence includes only biological fields, excluding scan elapsed time and engine metadata.
 
+### Decoder-thread queue and libdeflate: no retained gain
+
+Subsequent gzip experiments used the exact `22ca2ad` saved release executable as baseline, 11 scanner workers and `bench/data/demo-1gb.fastq.gz`. Each candidate has three alternating baseline/candidate pairs; all biological JSON pairs are byte-identical with the canonical SHA-256 above. Rate is uncompressed GiB/s. Timings are shared-host measurements, not isolated-cache results.
+
+| Candidate / pair | Baseline scan s | Candidate scan s | Candidate wall s | Load at baseline start | Load at candidate end |
+| --- | ---: | ---: | ---: | --- | --- |
+| zlib-rs decode thread, two-block queue / 1 | 3.926355510 | 3.392353681 | 4.155 | 1.24 1.30 1.17 2/946 480172 | 1.86 1.44 1.21 1/944 480249 |
+| zlib-rs decode thread, two-block queue / 2 | 3.771359181 | 3.836434681 | 4.601 | 1.86 1.44 1.21 1/944 480251 | 1.79 1.43 1.21 1/947 480549 |
+| zlib-rs decode thread, two-block queue / 3 | 3.523916961 | 3.854110754 | 4.762 | 1.79 1.43 1.21 1/947 480551 | 2.15 1.52 1.24 2/965 481585 |
+| libdeflate 1.26.1, bounded 2 GiB member / 1 | 3.369733731 | 4.440706104 | 5.266 | 3.38 1.94 1.40 1/943 483386 | 3.55 2.03 1.43 1/991 484466 |
+| libdeflate 1.26.1, bounded 2 GiB member / 2 | 3.363002119 | 3.624752844 | 4.373 | 3.55 2.03 1.43 1/991 484468 | 3.31 2.02 1.44 1/947 484531 |
+| libdeflate 1.26.1, bounded 2 GiB member / 3 | 3.734965243 | 3.667636513 | 4.425 | 3.31 2.02 1.44 1/947 484533 | 4.05 2.22 1.51 1/928 484601 |
+
+The queue's paired scan-time reductions were **13.600%, -1.726%, and -9.370%** (negative means slower). Its mean is 3.694299705 s versus 3.740210551 s baseline: only 1.23% faster and not reproducible. libdeflate's reductions were **-31.782%, -7.783%, and +1.803%**. Its mean is 3.911031820 s versus 3.489233698 s baseline: 12.09% slower. Both candidates and their dependency changes were fully reverted; no gzip source or dependency gain is committed.
+
+A direct zlib-rs decode through `gzip_reader` using 8 MiB output reads processed 1,273,289,704 bytes in **3.13 / 3.03 / 2.97 s wall**, with user/system CPU **3.02/0.09, 2.91/0.11, and 2.86/0.10 s**. Load at run starts was `13.22 5.27 2.70 6/1004 493683`, `12.40 5.24 2.70 2/989 493827`, and `12.40 5.24 2.70 1/976 493973`; end loads were `12.40 5.24 2.70 2/989 493826`, `12.40 5.24 2.70 1/976 493972`, and `11.49 5.17 2.69 1/976 494034`. Thus most gzip scan time is single-core decode. The public decoder already receives 8 MiB output slices, so larger read buffers were not a justified retained change. Local-only probe code was removed after measurement.
+
+The 673,091,091-byte fixture has gzip flags `0x08` (filename), no BGZF `BC` extra subfield, and footer ISIZE 1,273,289,704. It is an ordinary `gzip -1` file, not BGZF. A bounded-buffer libdeflate attempt does not justify unbounded whole-file buffering or loss of streaming/multi-member input behavior. Member-parallel decoding was not applicable to this fixture and was not implemented. Three fresh `22ca2ad` baseline scans measured 3.676491522 / 3.452777867 / 3.361811394 s; full start/end loads for all three and for every pair are in untracked `bench/r4/*-metrics.json`. Other builds and browser work on this shared host contributed to load variance; rejected rows are not relabeled as software improvements.
+
+Validation after restoring production sources: `cargo fmt --all -- --check`, `cargo test --workspace` (**48 tests**), strict workspace Clippy and `git diff --check` pass. Only the measurements and decisions are documented; the committed reader remains `22ca2ad`.
+
 ## M7 measurement protocol and limitations
 
 The M7 implementation reuses canonical k-mer keys and worker marker buffers, traverses panel and marker keys together on CPU, and sends per-batch vote deltas to progress observers. Biological genotype, QC, telomere, marker and ancestry rules are unchanged.
