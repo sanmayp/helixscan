@@ -825,6 +825,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "helixscan-tools"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "helixscan-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "hexf-parse"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
