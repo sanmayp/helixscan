@@ -23,3 +23,17 @@ Next: M1 verified panel builder.
 - Committed panel contains 77 variants and three searched traits. One seed (`rs10811661`) was dropped because its expected gene was absent within 50 kb; `data/panel.drop.log` records the reason. Amblyopia remains a searchable trait with no qualifying markers and the required explanation.
 - Allele normalization supports SNVs and small insertions/deletions, including exact junction-context reconstruction tests.
 - Validation: `cargo fmt --all`, `cargo clippy -p helixscan-panel --all-targets -- -D warnings` and `cargo test -p helixscan-panel` pass.
+
+## M2 — complete
+
+- Implemented reproducible, parallel FASTQ simulation with both strands, read-position-dependent errors, known truth genotypes, and long-read context extension.
+- Generated and committed 2.0 MB `testdata/small.fastq` plus its truth file; a separate 181 MB benchmark fixture remains gitignored.
+- Simulator chunk determinism, ordering, FASTQ structure, and substitution reproducibility pass unit tests.
+
+## M3 — complete
+
+- Implemented bounded parallel FASTQ reading with reusable buffers, record-tail handling, gzip input, thread-local QC and allele counters.
+- Implemented per-allele SNV/indel junction k-mers with strand-aware event quality filtering and one vote per read and variant. Shared allele k-mers are excluded from the exact index.
+- Added likelihood genotype calls, depth/GQ, multi-allele selection, hemizygous XY calls, and mitochondrial heteroplasmy.
+- Exhaustive FASTQ block boundaries, low-quality variant rejection, both strands, indel voting and simulated truth agreement pass: **100.000% (77/77 variants called; depth 40)**.
+- Validation: `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace` pass.
