@@ -2,7 +2,7 @@ use crate::encode::SimdLevel;
 use crate::{Panel, genotype::GenotypeCall};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SampleChecks {
@@ -50,6 +50,7 @@ pub struct MarkerIndex {
     pub y: HashSet<u64>,
     pub control: HashSet<u64>,
     pub x: HashSet<u64>,
+    dense: OnceLock<MarkerLookup>,
 }
 impl MarkerIndex {
     pub fn new(panel: &Panel) -> Self {
@@ -72,7 +73,82 @@ impl MarkerIndex {
         let mut y = keys("SRY");
         y.extend(keys("UTY"));
         y.retain(|key| !x.contains(key) && !control.contains(key));
-        Self { y, control, x }
+        Self {
+            y,
+            control,
+            x,
+            dense: OnceLock::new(),
+        }
+    }
+    /// Build a custom marker index; its compact cache remains lazy and internal.
+    pub fn from_sets(y: HashSet<u64>, control: HashSet<u64>, x: HashSet<u64>) -> Self {
+        Self {
+            y,
+            control,
+            x,
+            dense: OnceLock::new(),
+        }
+    }
+    fn lookup(&self) -> &MarkerLookup {
+        self.dense.get_or_init(|| MarkerLookup::new(self))
+    }
+}
+
+/// A cache-local prefix filter preceding an exact full-key open-addressed table.
+#[derive(Debug)]
+struct MarkerLookup {
+    prefixes: Vec<u8>,
+    keys: Vec<u64>,
+    flags: Vec<u8>,
+    mask: usize,
+}
+impl MarkerLookup {
+    fn new(index: &MarkerIndex) -> Self {
+        let count = index.y.len() + index.control.len() + index.x.len();
+        let capacity = (count.max(1) * 2).next_power_of_two();
+        let mut this = Self {
+            prefixes: vec![0; 1 << 24],
+            keys: vec![0; capacity],
+            flags: vec![0; capacity],
+            mask: capacity - 1,
+        };
+        for (flag, keys) in [(1u8, &index.y), (2, &index.control), (4, &index.x)] {
+            for &key in keys {
+                let mixed = key.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+                this.prefixes[(mixed >> 40) as usize] |= flag;
+                let mut slot = mixed as usize & this.mask;
+                while this.keys[slot] != 0 {
+                    if this.keys[slot] == key + 1 {
+                        this.flags[slot] |= flag;
+                        break;
+                    }
+                    slot = (slot + 1) & this.mask;
+                }
+                if this.keys[slot] == 0 {
+                    this.keys[slot] = key + 1;
+                    this.flags[slot] = flag;
+                }
+            }
+        }
+        this
+    }
+    #[inline]
+    fn flags(&self, key: u64) -> u8 {
+        let mixed = key.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        if self.prefixes[(mixed >> 40) as usize] == 0 {
+            return 0;
+        }
+        let mut slot = mixed as usize & self.mask;
+        for _ in 0..=self.mask {
+            if self.keys[slot] == key + 1 {
+                return self.flags[slot];
+            }
+            if self.keys[slot] == 0 {
+                return 0;
+            }
+            slot = (slot + 1) & self.mask;
+        }
+        0
     }
 }
 
@@ -107,8 +183,14 @@ impl MarkerScanner {
     pub fn add_keys(&mut self, seq: &[u8], local: &mut MarkerLocal) {
         let mut y = false;
         let mut control = false;
+        let lookup = self.index.lookup();
         self.encoder.for_each_key(seq, |key| {
-            observe_marker_key(&self.index, key, &mut y, &mut control);
+            let flags = lookup.flags(key.canonical);
+            y |= flags & 1 != 0;
+            if flags & 4 != 0 {
+                y = false;
+            }
+            control |= flags & 2 != 0;
         });
         local.y += u64::from(y);
         local.control += u64::from(control);
@@ -118,10 +200,61 @@ impl MarkerScanner {
         self.add_keys(seq, local);
     }
     pub fn add_telomere(&mut self, seq: &[u8], local: &mut MarkerLocal) {
-        if tandem(seq, b"TTAGGG") >= 7 || tandem(seq, b"CCCTAA") >= 7 {
+        if has_telomere(seq) {
             local.telomeric += 1;
         }
     }
+    #[inline]
+    pub fn observe(&self, key: crate::encode::KmerKey, y: &mut bool, control: &mut bool) {
+        let flags = self.index.lookup().flags(key.canonical);
+        *y |= flags & 1 != 0;
+        if flags & 4 != 0 {
+            // X-homolog matches still suppress Y specificity after a Y hit.
+            *y = false;
+        }
+        *control |= flags & 2 != 0;
+    }
+}
+const fn repeated_motif(motif: &[u8; 6]) -> u128 {
+    let mut code = 0u128;
+    let mut repeat = 0;
+    while repeat < 7 {
+        let mut i = 0;
+        while i < 6 {
+            let base = match motif[i] {
+                b'A' => 0,
+                b'C' => 1,
+                b'G' => 2,
+                b'T' => 3,
+                _ => 0,
+            };
+            code = (code << 2) | base;
+            i += 1;
+        }
+        repeat += 1;
+    }
+    code
+}
+const TELOMERE_FORWARD: u128 = repeated_motif(b"TTAGGG");
+const TELOMERE_REVERSE: u128 = repeated_motif(b"CCCTAA");
+
+/// A 42-base rolling window replaces twelve whole-read restart scans.
+fn has_telomere(seq: &[u8]) -> bool {
+    let mut code = 0u128;
+    let mut valid = 0usize;
+    for &base in seq {
+        let Some(base) = crate::base_encode(base) else {
+            code = 0;
+            valid = 0;
+            continue;
+        };
+        code = ((code << 2) | u128::from(base)) & ((1u128 << 84) - 1);
+        valid += 1;
+        if valid >= 42 && (code == TELOMERE_FORWARD || code == TELOMERE_REVERSE) {
+            return true;
+        }
+    }
+    false
 }
 pub fn tandem(seq: &[u8], motif: &[u8]) -> usize {
     let mut best = 0;
@@ -138,6 +271,7 @@ pub fn tandem(seq: &[u8], motif: &[u8]) -> usize {
     }
     best
 }
+
 pub fn sample_checks(
     panel: &Panel,
     calls: &[GenotypeCall],
@@ -234,4 +368,57 @@ pub fn ancestry(panel: &Panel, calls: &[GenotypeCall]) -> Vec<AncestryScore> {
     }
     out.sort_by(|a, b| a.difference.total_cmp(&b.difference));
     out
+}
+
+#[cfg(test)]
+mod telomere_tests {
+    #[test]
+    fn single_pass_matches_restart_scan_at_every_boundary() {
+        let mut state = 19u64;
+        for length in 0..260 {
+            let mut seq = Vec::with_capacity(length);
+            for i in 0..length {
+                state = state
+                    .wrapping_mul(6_364_136_223_846_793_005)
+                    .wrapping_add(14_465_269_304_089_633_739);
+                seq.push(if (state >> 60) > 12 {
+                    b"Nnacgt"[(state >> 58) as usize % 6]
+                } else {
+                    b"ACGTacgtTTAGGCC"[(state >> 58) as usize % 15]
+                });
+                if i % 37 == 0 {
+                    seq.extend_from_slice(if i % 74 == 0 { b"TTAGGGT" } else { b"CCCTAAC" });
+                }
+            }
+            for motif in [b"TTAGGG", b"CCCTAA"] {
+                let other = if motif == b"TTAGGG" {
+                    b"CCCTAA"
+                } else {
+                    b"TTAGGG"
+                };
+                assert_eq!(
+                    super::has_telomere(&seq),
+                    super::tandem(&seq, motif) >= 7 || super::tandem(&seq, other) >= 7
+                );
+            }
+            // Every insertion of an exact seven-repeat motif must be found in
+            // both directions; lowercase and non-ACGT bytes are tested above.
+            for motif in [b"TTAGGG".repeat(7), b"CCCTAA".repeat(7)] {
+                let mut seq = b"ACGTNNacgt".repeat(12);
+                for offset in 0..seq.len() {
+                    let mut with = seq.clone();
+                    with.splice(offset..offset, motif.iter().copied());
+                    assert!(super::has_telomere(&with));
+                }
+                seq.truncate(41);
+                assert!(!super::has_telomere(&seq));
+            }
+            for repeats in 0..9 {
+                let seq = b"TTAGGG".repeat(repeats);
+                assert_eq!(super::has_telomere(&seq), repeats >= 7);
+                let seq = b"CCCTAA".repeat(repeats);
+                assert_eq!(super::has_telomere(&seq), repeats >= 7);
+            }
+        }
+    }
 }

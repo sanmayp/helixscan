@@ -1,5 +1,43 @@
 # Measured results
 
+## H2 four-worker CPU optimization (2026-11-22, `perf-h2`)
+
+`demo-1gb.fastq` is 1,273,289,704 bytes and 4,000,000 reads. All rows are sequential four-worker `CPU Avx512` scans with report scan time, external process wall time, and `/proc/loadavg` at start/end. GiB/s is input FASTQ bytes divided by scan seconds and 2^30. They are real runs on the shared host, not isolated controlled-cache runs. Raw reports, logs, metrics and the saved baseline binary are in untracked `bench/h2/`.
+
+All runs call 77/77 truth variants, report 100% panel coverage, and retain byte-identical biological JSON after excluding only scan elapsed time and engine metadata. Canonical normalized biological JSON SHA-256 is `6d1a625f9962a82c49fe73295452e0f58a44ac76773e423272630ae727a2c466`.
+
+| Stage | Run | Scan s | Wall s | GiB/s | Load at start | Load at end |
+| --- | ---: | ---: | ---: | ---: | --- | --- |
+| Baseline `aa4237e` | 1 (contended) | 13.755564989 | 14.680 | 0.086208 | 4.93 2.31 0.93 3/910 319502 | 5.07 2.47 1.01 1/892 319716 |
+| Baseline `aa4237e` | 2 | 11.939225765 | 12.680 | 0.099323 | 5.07 2.47 1.01 1/892 319722 | 4.98 2.54 1.04 1/892 319729 |
+| Baseline `aa4237e` | 3 | 11.908009032 | 12.650 | 0.099584 | 4.66 2.51 1.04 1/892 319735 | 4.56 2.56 1.08 2/887 319744 |
+| Reader/gzip only (unreleased) | 1 | 12.339903236 | 13.130 | 0.096098 | 3.66 2.62 1.92 2/942 345572 | 3.72 2.66 1.94 1/938 345612 |
+| Reader/gzip only (unreleased) | 2 | 12.683535205 | 13.460 | 0.093495 | 3.72 2.66 1.94 2/938 345616 | 3.78 2.73 1.97 1/945 345845 |
+| Reader/gzip only (unreleased) | 3 | 12.379069056 | 13.150 | 0.095794 | 3.78 2.73 1.97 2/945 345849 | 3.81 2.77 1.99 1/940 345876 |
+| Exact first-gain candidate | 1 | 4.265771879 | 5.010 | 0.277990 | 3.91 4.63 3.14 2/918 368060 | 3.92 4.62 3.14 1/914 368067 |
+| Exact first-gain candidate | 2 | 4.272545412 | 5.020 | 0.277550 | 3.92 4.62 3.14 3/914 368071 | 4.00 4.63 3.15 1/914 368078 |
+| Exact first-gain candidate | 3 | 4.336093543 | 5.080 | 0.273482 | 4.00 4.63 3.15 2/914 368082 | 4.00 4.62 3.16 2/916 368091 |
+
+The exact first-gain candidate contains the reader/gzip fixes, an exact marker prefix/filter table, rolling telomere detection and SIMD FASTQ newline search. All three final runs are about 2.8 times the best baseline rate; the reader-only rows were not an independent gain. The consolidated FASTQ parser attempt was reverted to its tested tail-preserving boundary finder after its regression, with SIMD newline search used in both newline loops. This table describes the exact candidate selected for the first gain commit.
+
+Required I/O changes: gzip input uses `flate2::bufread::MultiGzDecoder` over a 1 MiB `BufReader`; core and GPU paths pass the already-open file to it; reads target reserved spare capacity rather than a repeatedly zero-filled vector. FASTQ record boundaries, truncation checks and `@` quality handling remain covered.
+
+### H2 profile
+
+`perf` was unavailable on the host. Valgrind 3.26.0 Callgrind ran `tests::real_panel_simulated_truth_agreement` on the shared 2,071,530-byte `testdata/small.fastq` fixture: wall 13.25 s, user 11.93 s, system 1.29 s; load `2.23 2.26 1.19 2/889 325599` to `1.96 2.20 1.18 1/903 325810`. This is an instruction-cost profile of the small fixture, not the 1 GB timing above. It recorded 932,709,250 instruction references. Leading measured costs were:
+
+| Function / operation | Ir | % of total |
+| --- | ---: | ---: |
+| `RandomState::hash_one::<&usize>` | 225,272,047 | 24.152441% |
+| `MarkerScanner::add_telomere` | 174,683,120 | 18.728572% |
+| SipHash `Hasher::write` | 136,264,894 | 14.609579% |
+| `observe_marker_key` | 64,713,726 | 6.938253% |
+| `HashSet<u64>` construction | 51,311,921 | 5.501384% |
+
+The exact marker cache uses a prefix rejection table followed by full-key open addressing. It retains the public marker sets and their behavior; no probabilistic membership verdict is used. Telomere detection uses one rolling 42-base comparison in either motif orientation, with differential tests covering random ambiguous input, all repeat counts through nine, and motif insertions at every tested offset.
+
+H2 candidate validation: release core/GPU tests (**34 tests**, including whole-result GPU parity), randomized telomere/reference equivalence, and strict scanner/GPU Clippy (`-D warnings`) passed. The final full-workspace test and gzip integration checks remain tracked in `PROGRESS.md`.
+
 All measurements use the repository's release build on the Rocky Linux 9.8 host: Intel Xeon W-2135 (6 cores / 12 threads, AVX-512), NVIDIA Quadro P5000 16 GiB, driver 580.196.07. No benchmark claims the 1.5 GB/s target has been met.
 
 ## M7 measurement protocol and limitations

@@ -108,7 +108,7 @@ pub fn scan_path_with_context(
         .unwrap_or_else(|| Arc::new(MarkerIndex::new(panel)));
     let file = std::fs::File::open(path)?;
     let source: Box<dyn std::io::Read + Send> = if path.extension().is_some_and(|x| x == "gz") {
-        gzip_reader(path)?
+        gzip_reader(file)?
     } else {
         Box::new(file)
     };

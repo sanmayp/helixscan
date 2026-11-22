@@ -96,5 +96,11 @@ Next: M7 measured benchmarks, execution instructions and the 60-second demo.
 READY: M0–M7 are committed with reproducible offline scanning, local web/report workflow, measured backend results and documented limitations above.
 
 ## H1 — complete; 60-second demo saved-report rendering verified
-
 - The four-worker, 1,273,289,704-byte simulated FASTQ demo scan measured **12.092 seconds** with **77/77 calls and 100% panel coverage**; fixed blank saved-report rendering and verified real persisted-report values in headless Chromium, with `docs/DEMO.md` commands and 60-second shot list.
+## H2 — first measured gain committed; further CPU tuning in progress
+
+- Scoped changes to FASTQ reading, scanners, marker lookup, telomere traversal and scanner tests. No genotype, panel/data, simulator or web file was edited.
+- Four-worker baseline and exact-candidate timings on `demo-1gb.fastq` are in `bench/RESULTS.md`, each repeated three times with load averages and biological-output SHA-256. Exact final-candidate rates are **0.277990 / 0.277550 / 0.273482 GiB/s** vs best baseline **0.099584 GiB/s**. All calls and biological JSON are identical.
+- Added the required gzip decoder/buffering, removed the extra gzip file open from both scanner backends, and read into reserved spare capacity rather than zero-filled reads. `memchr` accelerates newline scans while the validated record-boundary/tail behavior is retained.
+- Replaced hot-path marker SipHash lookups with immutable full-key open addressing plus prefix rejection; exact public marker sets are unchanged. Telomere detection uses a single 42-base rolling window instead of twelve whole-read restart passes, with reference-equivalence tests.
+- 34 core/GPU release tests and strict core/GPU Clippy pass. Full workspace validation and gzip integration checks are required before the final READY. Further vote-loop optimization remains open.

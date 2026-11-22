@@ -1,5 +1,6 @@
 use anyhow::{Result, bail};
-use std::io::Read;
+use std::io::{BufReader, Read};
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Record {
     pub seq_off: usize,
@@ -30,7 +31,7 @@ fn record_offsets(data: &[u8]) -> Result<Vec<Record>> {
         let mut line = [0usize; 4];
         let mut len = [0usize; 4];
         for i in 0..4 {
-            let Some(rel) = data[pos..].iter().position(|b| *b == b'\n') else {
+            let Some(rel) = memchr::memchr(b'\n', &data[pos..]) else {
                 bail!("truncated FASTQ record")
             };
             line[i] = pos;
@@ -91,23 +92,30 @@ impl<R: Read> FastqReader<R> {
             .and_then(|rx| rx.try_recv().ok())
             .unwrap_or_default();
         data.clear();
+        let prefix = self.tail.len();
         data.extend_from_slice(&self.tail);
         self.tail.clear();
+
         if !self.eof {
-            let prefix = data.len();
-            let mut used = 0;
-            while used < self.chunk {
-                data.resize(prefix + self.chunk, 0);
-                let n = self
-                    .reader
-                    .read(&mut data[prefix + used..prefix + self.chunk])?;
+            data.reserve(self.chunk);
+            while data.len() - prefix < self.chunk {
+                // Read into spare, uninitialized capacity, so no per-read
+                // resize can clear several MiB that will immediately be filled.
+                let spare = unsafe {
+                    std::slice::from_raw_parts_mut(
+                        data.as_mut_ptr().add(data.len()),
+                        data.capacity() - data.len(),
+                    )
+                };
+                let n = self.reader.read(spare)?;
+                // SAFETY: `read` initializes exactly n bytes of `spare`, and
+                // the buffer was reserved before any pointer was derived.
+                unsafe { data.set_len(data.len() + n) };
                 if n == 0 {
                     self.eof = true;
                     break;
                 }
-                used += n;
             }
-            data.truncate(prefix + used);
         }
         if self.eof {
             if data.is_empty() {
@@ -141,11 +149,10 @@ impl<R: Read> FastqReader<R> {
         let mut batch = Batch {
             id: self.id,
             bytes,
-            buf: Vec::new(),
+            buf: data,
             records: Vec::new(),
         };
-        data.truncate(complete);
-        batch.buf = data;
+        batch.buf.truncate(complete);
         batch.records = record_offsets(&batch.buf)?;
         self.offset += bytes;
         self.id += 1;
@@ -155,7 +162,7 @@ impl<R: Read> FastqReader<R> {
 fn find_record(data: &[u8], mut pos: usize) -> Option<usize> {
     let mut seq_len = 0;
     for line in 0..4 {
-        let rel = data.get(pos..)?.iter().position(|b| *b == b'\n')?;
+        let rel = memchr::memchr(b'\n', data.get(pos..)?)?;
         if line == 0 && data.get(pos) != Some(&b'@') {
             return None;
         }
@@ -166,15 +173,15 @@ fn find_record(data: &[u8], mut pos: usize) -> Option<usize> {
             return None;
         }
         if line == 3 && rel != seq_len {
-            // An '@' quality line at the end of a chunk is a tail, not a bad
-            // record header. Complete records are validated next.
+            // A quality '@' at chunk end is a tail, not a record header.
+            // Validation on the complete records still rejects malformed input.
             return None;
         }
         pos += rel + 1;
     }
     Some(pos)
 }
-pub fn gzip_reader(path: &std::path::Path) -> Result<Box<dyn Read + Send>> {
-    let file = std::fs::File::open(path)?;
-    Ok(Box::new(flate2::read::MultiGzDecoder::new(file)))
+pub fn gzip_reader(file: std::fs::File) -> Result<Box<dyn Read + Send>> {
+    let buffered = BufReader::with_capacity(1024 * 1024, file);
+    Ok(Box::new(flate2::bufread::MultiGzDecoder::new(buffered)))
 }
