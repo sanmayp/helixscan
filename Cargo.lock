@@ -777,6 +777,7 @@ dependencies = [
  "flate2",
  "helixscan-panel",
  "helixscan-sim",
+ "memchr",
  "serde",
  "serde_json",
  "toml",

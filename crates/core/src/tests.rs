@@ -101,11 +101,11 @@ fn shared_marker_traversal_preserves_per_read_evidence_and_votes() {
     assert_ne!(y_key, control_key);
     assert_ne!(y_key, x_key);
     assert_ne!(control_key, x_key);
-    let index = Arc::new(crate::marker::MarkerIndex {
-        y: [y_key].into_iter().collect(),
-        control: [control_key].into_iter().collect(),
-        x: [x_key].into_iter().collect(),
-    });
+    let index = Arc::new(crate::marker::MarkerIndex::from_sets(
+        [y_key].into_iter().collect(),
+        [control_key].into_iter().collect(),
+        [x_key].into_iter().collect(),
+    ));
     let panel_index = crate::PanelIndex::new(&p);
     for level in [
         crate::encode::SimdLevel::Scalar,
