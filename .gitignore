@@ -1,0 +1,9 @@
+/target/
+*.fastq
+*.fastq.gz
+/testdata/
+/bench/data/
+*.log
+!data/panel.drop.log
+__pycache__/
+node_modules/

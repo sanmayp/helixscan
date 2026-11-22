@@ -1,0 +1,16 @@
+[workspace]
+members = ["crates/gpu"]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+
+[workspace.dependencies]
+anyhow = "1"
+wgpu = "26"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+panic = "abort"
