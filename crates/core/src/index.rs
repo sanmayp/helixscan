@@ -328,8 +328,7 @@ pub fn scan_read_with_markers(
     let mut y = false;
     let mut control = false;
     encoder.for_each_key(seq, |key| {
-        crate::marker::observe_marker_key(&scanner.index, key, &mut y, &mut control);
-        if let Some(table_hits) = index.lookup_ref(key.canonical) {
+        if let Some(table_hits) = scanner.maybe_observe(key, index, &mut y, &mut control) {
             for &hit in table_hits
                 .iter()
                 .filter(|hit| (hit.strand == 0) == key.forward)

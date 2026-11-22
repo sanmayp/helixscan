@@ -2,7 +2,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 use std::thread;
@@ -50,8 +50,15 @@ pub struct Variant {
     pub flank_left: String,
     pub flank_right: String,
     pub phenotypes: Vec<Phenotype>,
+    /// Unique allele supported by the card's own increasing-risk findings.
+    #[serde(default)]
+    pub effect_allele: Option<String>,
+    #[serde(default)]
+    pub effect_allele_status: EffectAlleleStatus,
+    #[serde(default)]
+    pub effect_findings: Vec<Phenotype>,
     pub clinical_significance: Vec<String>,
-    pub frequencies: HashMap<String, HashMap<String, f64>>,
+    pub frequencies: BTreeMap<String, BTreeMap<String, f64>>,
     pub fetched_at: String,
     pub ensembl_release: u32,
 }
@@ -61,6 +68,106 @@ pub struct Haplotype {
     pub rs429358: String,
     pub rs7412: String,
 }
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum EffectAlleleStatus {
+    Supported,
+    #[default]
+    Unclear,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct EffectAudit {
+    pub old_allele: Option<String>,
+    pub effect_allele: Option<String>,
+    pub status: EffectAlleleStatus,
+    pub own_trait_findings: usize,
+    pub qualifying_findings: usize,
+    pub decreasing_evidence: Vec<String>,
+    pub effect_findings: Vec<Phenotype>,
+}
+
+/// Only exact, case-insensitive trait matches with OR > 1 or a beta that
+/// explicitly says "unit increase" may establish an effect allele.
+/// Decreasing effects and directionless labels never do. Different alleles,
+/// no qualifying findings, or an allele absent from the panel mean unclear.
+pub fn effect_audit(v: &Variant) -> EffectAudit {
+    let old_allele = v.phenotypes.iter().find_map(|p| p.risk_allele.clone());
+    let own = v
+        .phenotypes
+        .iter()
+        .filter(|p| p.trait_text.eq_ignore_ascii_case(&v.trait_group))
+        .collect::<Vec<_>>();
+    let qualifying = own
+        .iter()
+        .filter(|p| {
+            p.risk_allele.is_some()
+                && (p
+                    .odds_ratio
+                    .as_deref()
+                    .and_then(|x| x.trim().parse::<f64>().ok())
+                    .is_some_and(|x| x.is_finite() && x > 1.0)
+                    || p.beta_coefficient
+                        .as_deref()
+                        .map(str::trim)
+                        .is_some_and(|x| x.to_ascii_lowercase().contains("unit increase")))
+        })
+        .map(|p| (*p).clone())
+        .collect::<Vec<_>>();
+    let alleles = qualifying
+        .iter()
+        .filter_map(|p| p.risk_allele.clone())
+        .collect::<std::collections::BTreeSet<_>>();
+    let supported = alleles.len() == 1
+        && alleles
+            .iter()
+            .next()
+            .is_some_and(|a| a == &v.ref_allele || v.alts.contains(a));
+    EffectAudit {
+        old_allele,
+        effect_allele: if supported {
+            alleles.into_iter().next()
+        } else {
+            None
+        },
+        status: if supported {
+            EffectAlleleStatus::Supported
+        } else {
+            EffectAlleleStatus::Unclear
+        },
+        own_trait_findings: own.len(),
+        qualifying_findings: qualifying.len(),
+        decreasing_evidence: own
+            .into_iter()
+            .filter(|p| {
+                p.beta_coefficient
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|x| x.to_ascii_lowercase().contains("unit decrease"))
+            })
+            .map(|p| {
+                format!(
+                    "{} beta {}",
+                    p.risk_allele.as_deref().unwrap_or("(no allele)"),
+                    p.beta_coefficient.as_deref().unwrap_or("")
+                )
+            })
+            .take(4)
+            .collect(),
+        effect_findings: if supported { qualifying } else { vec![] },
+    }
+}
+
+pub fn audit_panel(panel: &mut Panel) {
+    for v in &mut panel.variants {
+        let audit = effect_audit(v);
+        v.effect_allele = audit.effect_allele;
+        v.effect_allele_status = audit.status;
+        v.effect_findings = audit.effect_findings;
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Panel {
     pub schema_version: u32,
@@ -92,6 +199,7 @@ pub struct MarkerRegion {
     pub end: u64,
     pub sequence: String,
 }
+pub mod effect_report;
 #[cfg(test)]
 mod tests;
 
@@ -311,7 +419,7 @@ impl<C: Rest> PanelBuilder<C> {
             bail!("no verified variants could be built");
         }
         let marker_regions = self.fetch_marker_regions();
-        Ok(Panel {
+        let mut panel = Panel {
             schema_version: 1,
             reference: "GRCh38".into(),
             ensembl_release: release,
@@ -337,7 +445,9 @@ impl<C: Rest> PanelBuilder<C> {
                     rs7412: "C".into(),
                 },
             ],
-        })
+        };
+        audit_panel(&mut panel);
+        Ok(panel)
     }
     fn fetch_marker_regions(&self) -> Vec<MarkerRegion> {
         let names = [
@@ -621,7 +731,7 @@ impl<C: Rest> PanelBuilder<C> {
         let pops = self
             .client
             .json(&format!("variation/human/{}?pops=1", s.rsid))?;
-        let mut frequencies: HashMap<String, HashMap<String, f64>> = HashMap::new();
+        let mut frequencies: BTreeMap<String, BTreeMap<String, f64>> = BTreeMap::new();
         for p in pops
             .get("populations")
             .and_then(Value::as_array)
@@ -674,6 +784,9 @@ impl<C: Rest> PanelBuilder<C> {
             flank_left,
             flank_right,
             phenotypes,
+            effect_allele: None,
+            effect_allele_status: EffectAlleleStatus::Unclear,
+            effect_findings: vec![],
             clinical_significance: sig,
             frequencies,
             fetched_at: now.into(),

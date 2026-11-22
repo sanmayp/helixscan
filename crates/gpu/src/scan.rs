@@ -175,7 +175,7 @@ pub fn gpu_scan_with_index(
     let marker_index = Arc::new(helixscan_core::marker::MarkerIndex::new(panel));
     let file = std::fs::File::open(path)?;
     let source: Box<dyn std::io::Read + Send> = if path.extension().is_some_and(|x| x == "gz") {
-        helixscan_core::fastq::gzip_reader(path)?
+        helixscan_core::fastq::gzip_reader(file)?
     } else {
         Box::new(file)
     };

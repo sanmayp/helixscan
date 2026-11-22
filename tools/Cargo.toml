@@ -1,0 +1,15 @@
+[package]
+name = "helixscan-tools"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json = "1"
+helixscan-core = { path = "../crates/core" }
+
+[[bin]]
+name = "truth-check-genotypes"
+path = "truth_check.rs"

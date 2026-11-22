@@ -1,6 +1,6 @@
 use anyhow::{Result, bail};
 use clap::{Parser, Subcommand};
-use helixscan_panel::{Ensembl, PanelBuilder};
+use helixscan_panel::{Ensembl, PanelBuilder, audit_panel, effect_report::effect_report};
 use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -13,6 +13,14 @@ struct Args {
 }
 #[derive(Subcommand)]
 enum Command {
+    AuditEffects {
+        #[arg(long, default_value = "data/panel.json")]
+        panel: PathBuf,
+        #[arg(long, default_value = "data/panel.json")]
+        out: PathBuf,
+        #[arg(long, default_value = "docs/EFFECT-ALLELES.md")]
+        report: PathBuf,
+    },
     Build {
         #[arg(long, default_value = "data/panel.seed.tsv")]
         seed: PathBuf,
@@ -27,16 +35,25 @@ enum Command {
     },
 }
 fn main() -> Result<()> {
-    let Args {
-        command:
-            Command::Build {
-                seed,
-                out,
-                drop_log,
-                limit,
-                request_delay_ms,
-            },
-    } = Args::parse();
+    let Args { command } = Args::parse();
+    let (seed, out, drop_log, limit, request_delay_ms) = match command {
+        Command::AuditEffects { panel, out, report } => {
+            let mut panel: helixscan_panel::Panel =
+                serde_json::from_reader(fs::File::open(panel)?)?;
+            audit_panel(&mut panel);
+            fs::write(&out, serde_json::to_string_pretty(&panel)? + "\n")?;
+            fs::write(report, effect_report(&panel))?;
+            println!("audited {} variants", panel.variants.len());
+            return Ok(());
+        }
+        Command::Build {
+            seed,
+            out,
+            drop_log,
+            limit,
+            request_delay_ms,
+        } => (seed, out, drop_log, limit, request_delay_ms),
+    };
     let release = Ensembl::default()
         .get("info/data?")?
         .into_body()

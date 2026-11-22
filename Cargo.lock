@@ -777,6 +777,7 @@ dependencies = [
  "flate2",
  "helixscan-panel",
  "helixscan-sim",
+ "memchr",
  "serde",
  "serde_json",
  "toml",
@@ -820,6 +821,16 @@ dependencies = [
  "helixscan-panel",
  "rand",
  "rayon",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "helixscan-tools"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "helixscan-core",
  "serde",
  "serde_json",
 ]
