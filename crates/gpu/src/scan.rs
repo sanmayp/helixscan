@@ -168,6 +168,9 @@ pub fn gpu_scan_with_index(
     index: PanelIndex,
 ) -> Result<(ScanResult, crate::GpuStats)> {
     let start = Instant::now();
+    if let Some(p) = progress {
+        p.reset();
+    }
     let index = Arc::new(index);
     let marker_index = Arc::new(helixscan_core::marker::MarkerIndex::new(panel));
     let file = std::fs::File::open(path)?;
@@ -206,6 +209,12 @@ pub fn gpu_scan_with_index(
                         }
                         qc.add(seq, qual);
                         scanner.add(seq, &mut markers);
+                        if let Some(p) = progress {
+                            p.bases.fetch_add(r.seq_len as u64, Ordering::Relaxed);
+                        }
+                    }
+                    if let Some(p) = progress {
+                        p.update_votes(&counts);
                     }
                 }
                 let _ = local.send((counts, qc, markers));

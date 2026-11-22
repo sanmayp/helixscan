@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#070b14">
+  <title>HelixScan · Research DNA scanner</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/responsive.css">
+  <link rel="stylesheet" href="/visuals.css">
+  <script type="importmap">{"imports":{"three":"/vendor/three.module.js"}}</script>
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <header class="masthead"><a class="brand" href="/"><span class="brand-mark">H</span><span>Helix<span>Scan</span></span></a><span class="tag">GENOMIC RESEARCH / v0.1</span><button id="report-tab" class="button secondary hidden">Report <span aria-hidden="true">↗</span></button></header>
+  <main>
+    <section id="scan-page">
+      <div class="page-title"><div><p class="eyebrow">WHOLE-READ / PANEL ANALYSIS</p><h1>Sequence, illuminated.</h1><p class="lede">Scan FASTQ reads against a verified genetic marker panel.</p></div><button id="open-report" class="button primary hidden">Open report →</button></div>
+      <div class="warning">Research and education only. Not a medical diagnosis. Talk to a doctor or genetic counselor about any result.</div>
+      <div class="scan-layout">
+        <aside class="controls">
+          <section class="glass"><h2><span class="index">01</span> Input</h2><label class="label" for="file-input">FASTQ file</label><div class="input-row"><select id="file-input" aria-label="Select a FASTQ file"><option value="">Choose a file…</option></select><label class="button upload">Upload<input id="upload" type="file" accept=".fastq,.fq,.gz,.fastq.gz,.fq.gz" hidden></label></div><dl class="facts"><div><dt>File size</dt><dd id="file-size">—</dd></div><div><dt>Format</dt><dd id="file-format">—</dd></div><div><dt>Marker panel</dt><dd><span id="variant-count">77</span> variants</dd></div></dl><div class="scan-options"><label>Engine<select id="backend"><option value="auto">CPU · runtime SIMD</option><option value="cpu">CPU</option><option value="gpu">GPU · forced</option></select></label><label>Cores<input id="threads" type="number" min="1" max="64" value="11"></label></div><button id="start" class="button primary" disabled>Start scan <span aria-hidden="true">→</span></button><button id="reset" class="text-button">New scan</button></section>
+          <section class="glass"><h2><span class="index">02</span> Live throughput</h2><div class="big-number"><span id="rate">0.00</span><small>GB/s</small></div><div class="stats"><div><span id="reads">0</span><small>reads</small></div><div><span id="bases">0</span><small>bases</small></div></div><dl class="facts"><div><dt>Elapsed</dt><dd id="elapsed">0.0 s</dd></div><div><dt>Reader / workers</dt><dd id="workers">1 / 11</dd></div></dl></section>
+          <section class="glass"><h2><span class="index">03</span> Engine</h2><div id="cpu-bars" class="cpu-bars" aria-label="Per-core CPU utilization"></div><dl class="facts"><div><dt>GPU utilization</dt><dd id="gpu-util">Unavailable</dd></div><div><dt>SIMD</dt><dd id="simd">—</dd></div><div><dt>Device</dt><dd id="device">Runtime selection</dd></div></dl><p id="fallback" class="fallback"></p></section>
+        </aside>
+        <section class="helix-panel glass"><div class="panel-top"><span class="eyebrow">LIVE / SEQUENCE EXPLORER</span><span id="helix-status" class="status idle"><i></i>No scan yet</span></div><div id="helix" role="img" aria-label="Animated DNA double helix with scanning ring"></div><div id="gene-tag" class="gene-tag">Awaiting sequence evidence</div><div class="progress-track"><span id="progress-fill"></span></div><div class="progress-row"><span id="progress-label">Ready for a FASTQ input</span><span id="eta">—</span></div></section>
+        <aside class="live panel"><div class="panel-top"><h2>Live hits</h2><span id="hit-count" class="pill">0 genes</span></div><p id="empty-hits" class="empty">No evidence yet.<br>Supporting reads will appear here.</p><div id="hits"></div></aside>
+      </div>
+    </section>
+    <section id="report-page" hidden>
+      <div class="page-title"><div><p class="eyebrow">ANALYSIS COMPLETE</p><h1>Research report</h1><p id="report-file" class="lede"></p></div><div class="report-actions"><button id="back" class="button secondary">← Scan</button><button id="export" class="button secondary">Export JSON</button><button id="print" class="button primary">Print / PDF</button></div></div>
+      <div class="warning">Research and education only. Not a medical diagnosis. Talk to a doctor or genetic counselor about any result.</div>
+      <p id="report-engine" class="engine-note"></p><div id="qc-cards" class="qc-grid"></div>
+      <section class="glass sample-summary"><h2>Whole-sample checks</h2><div id="sample-checks"></div></section>
+      <nav id="section-nav" class="section-nav" aria-label="Report sections"></nav><div id="traits"></div>
+      <section class="glass table-section"><h2>Depth per gene</h2><div id="depth-chart" class="depth-chart"></div></section>
+      <section class="glass table-section"><h2>Variant evidence</h2><div class="table-scroll"><table><thead><tr><th>Gene / rsID</th><th>Genotype</th><th>Ref / alt reads</th><th>Depth</th><th>GQ</th><th>Risk allele</th><th>Evidence / source</th></tr></thead><tbody id="variant-rows"></tbody></table></div></section>
+      <section class="glass limitations"><h2>What this cannot tell you</h2><ul id="limitations"></ul></section>
+    </section>
+  </main>
+  <footer>HELIXSCAN <span>Research and education only. Not a medical test.</span></footer>
+  <script>window.pendingReportId=null;function loadReport(id){if(window.loadReportById){window.loadReportById(id);}else{window.pendingReportId=id;}}</script>
+</body>
+</html>

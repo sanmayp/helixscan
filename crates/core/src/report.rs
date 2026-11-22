@@ -34,7 +34,7 @@ pub struct PgxReport {
 }
 pub fn report(
     panel: &Panel,
-    calls: Vec<GenotypeCall>,
+    mut calls: Vec<GenotypeCall>,
     qc: Qc,
     engine: String,
     elapsed_seconds: f64,
@@ -86,8 +86,14 @@ pub fn report(
             evidence: vec![],
         });
     }
+    let haplotype = apoe(panel, &calls);
+    for call in &mut calls {
+        if call.rsid == "rs429358" || call.rsid == "rs7412" {
+            call.apoe = Some(haplotype.label.clone());
+        }
+    }
     let pgx = crate::pgx::pgx_interpretations(panel, &calls);
-    Report{schema_version:1,disclaimer:"Research and education only. Not a medical diagnosis. Talk to a doctor or genetic counselor about any result.".into(),engine,elapsed_seconds,qc,apoe:apoe(panel,&calls),variants:calls,traits,pgx,sample_checks,limitations:vec!["Your age".into(),"Blood pressure".into(),"Whether you will get a disease".into(),"Colour blindness".into(),"CYP2D6 type".into(),"Full HLA type".into(),"Rare variants outside the panel".into()]}
+    Report{schema_version:1,disclaimer:"Research and education only. Not a medical diagnosis. Talk to a doctor or genetic counselor about any result.".into(),engine,elapsed_seconds,qc,apoe:haplotype,variants:calls,traits,pgx,sample_checks,limitations:vec!["Your age".into(),"Blood pressure".into(),"Whether you will get a disease".into(),"Colour blindness".into(),"CYP2D6 type".into(),"Full HLA type".into(),"Rare variants outside the panel".into()]}
 }
 pub fn text_report(r: &Report) -> String {
     format!(

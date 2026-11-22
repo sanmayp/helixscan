@@ -18,6 +18,37 @@ use std::{
 pub struct Progress {
     pub bytes: Arc<AtomicU64>,
     pub reads: Arc<AtomicU64>,
+    pub bases: Arc<AtomicU64>,
+    pub votes: Arc<Vec<[std::sync::atomic::AtomicU32; 4]>>,
+}
+impl Progress {
+    pub fn new(variants: usize) -> Self {
+        Self {
+            votes: Arc::new(
+                (0..variants)
+                    .map(|_| std::array::from_fn(|_| 0.into()))
+                    .collect(),
+            ),
+            ..Self::default()
+        }
+    }
+    pub fn update_votes(&self, counts: &[[u32; 4]]) {
+        for (live, counts) in self.votes.iter().zip(counts) {
+            for (live, count) in live.iter().zip(counts) {
+                live.fetch_add(*count, Ordering::Relaxed);
+            }
+        }
+    }
+    pub fn reset(&self) {
+        self.bytes.store(0, Ordering::Relaxed);
+        self.reads.store(0, Ordering::Relaxed);
+        self.bases.store(0, Ordering::Relaxed);
+        for counts in self.votes.iter() {
+            for count in counts {
+                count.store(0, Ordering::Relaxed);
+            }
+        }
+    }
 }
 #[derive(Clone, Debug)]
 pub struct ScanResult {
@@ -26,6 +57,19 @@ pub struct ScanResult {
     pub checks: crate::marker::SampleChecks,
     pub elapsed_seconds: f64,
     pub engine: String,
+}
+/// Prebuilt immutable indexes shared by scans of the same panel.
+pub struct ScanContext {
+    pub index: Arc<PanelIndex>,
+    pub markers: Arc<MarkerIndex>,
+}
+impl ScanContext {
+    pub fn new(panel: &Panel, level: crate::encode::SimdLevel) -> Self {
+        Self {
+            index: Arc::new(PanelIndex::with_simd(panel, level)),
+            markers: Arc::new(MarkerIndex::new(panel)),
+        }
+    }
 }
 pub fn scan_path(
     path: &Path,
@@ -45,9 +89,23 @@ pub fn scan_path_with_simd(
     if !level.available() {
         anyhow::bail!("requested SIMD level {level:?} is not supported by this CPU");
     }
+    scan_path_with_context(path, panel, threads, progress, level, None)
+}
+pub fn scan_path_with_context(
+    path: &Path,
+    panel: &Panel,
+    threads: usize,
+    progress: Option<&Progress>,
+    level: crate::encode::SimdLevel,
+    context: Option<&ScanContext>,
+) -> Result<ScanResult> {
     let start = Instant::now();
-    let index = Arc::new(PanelIndex::with_simd(panel, level));
-    let markers_index = Arc::new(MarkerIndex::new(panel));
+    let index = context
+        .map(|context| context.index.clone())
+        .unwrap_or_else(|| Arc::new(PanelIndex::with_simd(panel, level)));
+    let markers_index = context
+        .map(|context| context.markers.clone())
+        .unwrap_or_else(|| Arc::new(MarkerIndex::new(panel)));
     let file = std::fs::File::open(path)?;
     let source: Box<dyn std::io::Read + Send> = if path.extension().is_some_and(|x| x == "gz") {
         gzip_reader(path)?
@@ -96,6 +154,12 @@ pub fn scan_path_with_simd(
                         );
                         q.add(seq, qual);
                         marker_scanner.add(seq, &mut m);
+                        if let Some(p) = progress {
+                            p.bases.fetch_add(r.seq_len as u64, Ordering::Relaxed);
+                        }
+                    }
+                    if let Some(p) = progress {
+                        p.update_votes(&c);
                     }
                     batch.records.clear();
                     let _ = recycle_tx.try_send(std::mem::take(&mut batch.buf));

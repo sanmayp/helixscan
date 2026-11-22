@@ -1,0 +1,14 @@
+html{scroll-behavior:smooth}
+body{overflow-x:hidden}
+.depth-chart{display:flex;flex-direction:column;gap:8px}
+.depth-item{display:grid;grid-template-columns:150px 1fr 35px;align-items:center;gap:10px;font:11px monospace}
+.depth-item>div{height:4px;background:#203442}
+.depth-item i{display:block;height:4px;background:linear-gradient(to right,var(--cyan),#e64ab0)}
+.depth-item strong{font-weight:normal;color:var(--muted);font-variant-numeric:tabular-nums}
+.ancestry-bar{display:grid;grid-template-columns:35px 1fr 40px;align-items:center;gap:7px;margin:5px 0;font:10px monospace}
+.ancestry-bar>div{height:3px;background:#203442}
+.ancestry-bar i{display:block;height:3px;background:#e64ab0}
+.table-section{margin-bottom:16px}
+@media(max-width:760px){.depth-item{grid-template-columns:100px 1fr 35px}.table-section{padding:14px}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+@media print{.depth-item{color:#111}.depth-item strong{color:#333}}

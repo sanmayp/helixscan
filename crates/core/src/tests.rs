@@ -189,8 +189,9 @@ fn simulated_sample(
     };
     let truth = helixscan_sim::truths(&panel, &config);
     let path = root.join(format!(
-        "testdata/check-{sex:?}-{}-{telomere}.fastq",
-        population.unwrap_or("random")
+        "testdata/check-{sex:?}-{}-{telomere}-{:?}.fastq",
+        population.unwrap_or("random"),
+        std::thread::current().id()
     ));
     helixscan_sim::parallel_fastq(
         std::fs::File::create(&path).unwrap(),
@@ -202,7 +203,7 @@ fn simulated_sample(
     .unwrap();
     let result = crate::scan::scan_path(&path, &panel, 2, None).unwrap();
     if std::env::var_os("HELIXSCAN_KEEP_FIXTURE").is_none() {
-        std::fs::remove_file(path).unwrap();
+        let _ = std::fs::remove_file(path);
     }
     result
 }

@@ -17,7 +17,7 @@ pub struct Seed {
     pub keyword_regex: String,
     pub note: String,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Phenotype {
     pub trait_text: String,
     pub risk_allele: Option<String>,

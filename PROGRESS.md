@@ -70,3 +70,15 @@ Next: M5 generic NVIDIA Vulkan compute with measured CPU fallback, then app/UI a
 - Validation: formatting, strict workspace Clippy, and **28 workspace tests** pass. `helixscan-gpu-bench` records real CPU/forced-GPU/auto comparisons.
 
 Next: M6 app CLI, SSE scan workflow, vendored 3D scan UI, report UI and small-screen layout.
+
+## M6 — web workflow verified; phone visual capture blocked
+
+- Added the `scan`, `serve`, and `bench` CLI commands, offline Axum web server, safe configured-file selection/upload, scan snapshots, Server-Sent Events, saved reports, JSON export and printable HTML report routes.
+- Added the dark scan/report UI, live telemetry, vote/depth bars, trait and ancestry summaries, gene-depth chart and vendored Three.js double helix. Its instanced strands, scan ring and progress-linked motion use scan values, with reduced-motion handling. No external web CDN is required.
+- Fixed concurrent vote accounting to add each worker's totals; the progress unit test passes. Reused immutable panel/marker indexes at server startup to avoid setup time obscuring scan progress.
+- Fixed fast-scan SSE completion delivery and loading a saved report via its HTML route. Web `auto` deliberately maps to runtime-SIMD CPU; explicit GPU retains verification and fallback reporting. CLI auto benchmarking remains separate.
+- Live curl verification on release-build server, report `71975189b57441e9b214abdbe2647234`: all page assets and panel/files/telemetry endpoints returned 200; path traversal and zero threads returned 400. The medium fixture emitted **10 nonzero intermediate running snapshots** and completed with **189,520,530 bytes, 600,000 reads, 90,000,000 bases, 77 calls and 100% panel coverage** on four threads. Saved snapshot/events/report HTML and current JSON/HTML report endpoints returned 200.
+- Full validation after the SSE fix: `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace` (two consecutive complete runs), `cargo build --release`, JavaScript syntax checks and `git diff --check` pass. **39 workspace tests** pass (2 app integration, 19 core unit, 1 progress integration, 9 GPU, 4 panel, and 5 simulator unit tests). Thread-specific marker-test fixture paths prevent parallel tests from deleting each other's input.
+- Small-screen media queries, 44 px controls, reduced helix size and contained tables are implemented. Browser screenshot fallback did **not verify 360 px visual rendering**: Firefox captures were 1366x1346 and no supported Chromium was installed. HTTP/SSE and source-level responsive checks are the M6 verification of record; no claim of a visual phone pass is made.
+
+Next: M7 measured benchmarks, execution instructions and the 60-second demo.

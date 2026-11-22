@@ -13,6 +13,14 @@ pub struct GenotypeCall {
     pub called: bool,
     pub no_call_reason: Option<String>,
     pub heteroplasmy: Option<f64>,
+    #[serde(default)]
+    pub gene: String,
+    #[serde(default)]
+    pub trait_group: String,
+    #[serde(default)]
+    pub evidence: Vec<helixscan_panel::Phenotype>,
+    #[serde(default)]
+    pub apoe: Option<String>,
 }
 fn dose(c: &GenotypeCall, allele: &str, v: &helixscan_panel::Variant) -> u8 {
     let i = if allele == v.ref_allele {
@@ -66,6 +74,10 @@ pub fn call(v: &helixscan_panel::Variant, counts: &[u32; 4], sex: &str) -> Genot
         called: false,
         no_call_reason: Some("low coverage".into()),
         heteroplasmy: None,
+        gene: v.gene.clone(),
+        trait_group: v.trait_group.clone(),
+        evidence: v.phenotypes.clone(),
+        apoe: None,
     };
     if v.chr == "MT" {
         if d == 0 {

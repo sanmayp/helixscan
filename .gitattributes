@@ -1,0 +1,2 @@
+# Preserve vendored upstream source and do not lint its existing whitespace.
+web/vendor/three.module.js -diff

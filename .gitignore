@@ -10,5 +10,7 @@
 /bench/data/
 *.log
 !data/panel.drop.log
+!bench/RESULTS.md
+helixscan-runs/
 __pycache__/
 node_modules/
