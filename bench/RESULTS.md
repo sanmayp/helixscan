@@ -139,6 +139,35 @@ The 673,091,091-byte fixture has gzip flags `0x08` (filename), no BGZF `BC` extr
 
 Validation after restoring production sources: `cargo fmt --all -- --check`, `cargo test --workspace` (**48 tests**), strict workspace Clippy and `git diff --check` pass. Only the measurements and decisions are documented; the committed reader remains `22ca2ad`.
 
+## H4 fast automatic backend selection (2026-11-22, `perf-h4`)
+
+No GPU acceleration is claimed. On the Quadro P5000, both the cached small-batch configuration and the default larger batches were slower than the 11-worker CPU scanner on `demo-1gb.fastq` (1,273,289,704 bytes, 4,000,000 reads). Commits `17433ac` and `89cccc8` limit the fast path to this measured adapter. Auto probes Vulkan adapter metadata, then selects CPU without opening a GPU compute device, allocating GPU buffers, calibrating, or performing a GPU trial. Other NVIDIA adapters retain the full CPU/GPU comparison; explicit CPU does not probe, and forced GPU still checks complete biological parity.
+
+The original cached workgroup-64 / 256-read-batch measurements used a 2,048 MiB cap. The old auto completed its costly GPU trial before selecting CPU. The current release benchmark instead used `--tune false`, exercising the default 40,000-read batches on the same device and cap:
+
+| Configuration | Backend / stage | External wall s | Load at start | Load at end |
+| --- | --- | ---: | --- | --- |
+| Cached 256-read batches, original selector | CPU | 1.330122 | `2.60 1.60 1.59 2/918 516617` | `2.03 1.77 1.66 1/908 516837` |
+| Cached 256-read batches, original selector | Forced GPU | 48.135641 | same whole-benchmark load range | same whole-benchmark load range |
+| Cached 256-read batches, original selector | Old auto, selected CPU after GPU trial | 47.199051 | same whole-benchmark load range | same whole-benchmark load range |
+| Default 40,000-read batches, final selector | CPU | 1.422013 | `2.69 1.47 1.51 2/934 532941` | `3.68 1.72 1.59 1/926 533402` |
+| Default 40,000-read batches, final selector | Forced GPU | 5.979928 | same whole-benchmark load range | same whole-benchmark load range |
+| Default 40,000-read batches, final selector | Fast auto, no GPU trial | 1.482120 | same whole-benchmark load range | same whole-benchmark load range |
+
+The old auto's internal GPU candidate took 45.691 s versus 1.320 s CPU. The larger batches improved forced-GPU wall time substantially but remained slower than CPU, so no batching change was retained. The cached rows and final rows have different tuning configurations; their comparison demonstrates the avoided GPU work, not a controlled CPU speed-up. Raw output and load records are in untracked `bench/h4/baseline-gpu-bench.tsv`, `bench/h4/final-gpu-bench.tsv`, and `bench/h4/final-gpu-bench-load.txt`.
+
+Three sequential final-tree CLI auto runs then measured:
+
+| Run | Scan s | External wall s | Load at start | Load at end |
+| ---: | ---: | ---: | --- | --- |
+| 1 | 1.453102776 | 2.315 | `0.18 1.05 1.38 1/938 542283` | `0.18 1.05 1.38 1/939 542299` |
+| 2 | 1.349155351 | 2.170 | `0.18 1.05 1.38 1/939 542299` | `0.18 1.05 1.38 1/939 542314` |
+| 3 | 1.524148034 | 2.339 | `0.18 1.05 1.38 1/939 542314` | `0.25 1.05 1.38 1/939 542329` |
+
+The engine description reports: `auto: CPU because measured on this Quadro P5000; forced GPU 48.135641s vs CPU 1.330122s on demo-1gb.fastq (11 workers), batch transfers + readback dominate; no GPU scan/calibration trial; use --backend gpu to benchmark`.
+
+Every final auto report and a final explicit CPU report matched the same-source explicit CPU biological JSON byte-for-byte after excluding only top-level `engine` and `elapsed_seconds`. All read 4,000,000 records and called 77 variants; canonical biological SHA-256 is `9124a731882ab948c4b65e2f2489b09929ebbbdf3b674c64d95c9985383a5650`. This deliberately does not use the older pre-H0 hash, which predates multiallelic annotation changes. Earlier overlapping timing runs were discarded for performance claims but retained only as additional parity evidence. Validation on the final code: `cargo fmt --all -- --check`, `cargo test --workspace` (62 tests), `cargo clippy --workspace --all-targets -- -D warnings`, `cargo build --release --workspace`, and `git diff --check` passed.
+
 ## M7 measurement protocol and limitations
 
 The M7 implementation reuses canonical k-mer keys and worker marker buffers, traverses panel and marker keys together on CPU, and sends per-batch vote deltas to progress observers. Biological genotype, QC, telomere, marker and ancestry rules are unchanged.
