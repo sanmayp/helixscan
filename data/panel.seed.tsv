@@ -1,0 +1,66 @@
+section	trait	expected_gene	rsid	keyword_regex	note
+health	Type 2 diabetes	TCF7L2	rs7903146	diabet	strongest common T2D variant
+health	Type 2 diabetes	KCNJ11	rs5219	diabet	
+health	Type 2 diabetes	PPARG	rs1801282	diabet	
+health	Type 2 diabetes	SLC30A8	rs13266634	diabet	
+health	Type 2 diabetes	FTO	rs9939609	diabet|obes|body mass	
+health	Type 2 diabetes	CDKAL1	rs7754840	diabet	
+health	Type 2 diabetes	IGF2BP2	rs4402960	diabet	
+health	Type 2 diabetes	HHEX	rs1111875	diabet	
+health	Type 2 diabetes	CDKN2B	rs10811661	diabet	
+health	Heart and cholesterol	CDKN2B-AS1	rs1333049	coronary|myocard|heart	
+health	Heart and cholesterol	LPA	rs10455872	lipoprotein|coronary|Lp\(a\)	high Lp(a) is inherited
+health	Heart and cholesterol	LPA	rs3798220	lipoprotein|coronary|Lp\(a\)	
+health	Heart and cholesterol	APOB	rs5742904	hypercholesterol|apolipoprotein B	familial defective ApoB
+health	Heart and cholesterol	PCSK9	rs11591147	LDL|cholesterol|coronary	protective (lower LDL)
+health	Heart and cholesterol	LDLR	rs6511720	LDL|cholesterol	
+health	Blood pressure	AGT	rs699	hypertens|blood pressure	small effect only
+health	Alzheimer (APOE type)	APOE	rs429358	alzheimer|APOE	
+health	Alzheimer (APOE type)	APOE	rs7412	alzheimer|APOE|lipoprotein	
+health	Eye: macular degeneration	CFH	rs1061170	macular	
+health	Eye: macular degeneration	ARMS2	rs10490924	macular	
+health	Hearing loss	GJB2	rs80338939	deaf|hearing	35delG
+health	Hearing (antibiotic)	MT-RNR1	rs267606617	deaf|hearing|aminoglycoside	m.1555A>G
+health	Iron overload	HFE	rs1800562	hemochromatosis	
+health	Iron overload	HFE	rs1799945	hemochromatosis	
+health	Blood clotting	F5	rs6025	thrombo|factor V	
+health	Blood clotting	F2	rs1799963	thrombo|prothrombin	
+health	Lung/liver (AATD)	SERPINA1	rs28929474	antitrypsin	PiZ
+health	Lung/liver (AATD)	SERPINA1	rs17580	antitrypsin	PiS
+cancer	Breast/ovarian	BRCA1	rs80357914	breast|ovarian|BRCA	185delAG founder
+cancer	Breast/ovarian	BRCA1	rs80357906	breast|ovarian|BRCA	5382insC founder
+cancer	Breast/ovarian	BRCA2	rs80359550	breast|ovarian|BRCA	6174delT founder
+cancer	Breast/other	CHEK2	rs555607708	breast|cancer	1100delC
+cancer	Colorectal	APC	rs1801155	colorectal|adenoma|polyp	I1307K
+cancer	Colorectal	MUTYH	rs34612342	MUTYH|polyp|colorectal	Y179C
+cancer	Colorectal	MUTYH	rs36053993	MUTYH|polyp|colorectal	G396D
+cancer	Prostate	HOXB13	rs138213197	prostate	G84E
+carrier	Sickle cell	HBB	rs334	sickle	
+carrier	Cystic fibrosis	CFTR	rs113993960	cystic	F508del
+carrier	Tay-Sachs	HEXA	rs387906309	tay|GM2	1278insTATC
+carrier	G6PD deficiency	G6PD	rs1050828	G6PD|hemoly|anemia	A- (X-linked)
+medicine	Clopidogrel, SSRIs	CYP2C19	rs4244285	CYP2C19|clopidogrel|drug	*2
+medicine	Clopidogrel, SSRIs	CYP2C19	rs4986893	CYP2C19|clopidogrel|drug	*3
+medicine	Clopidogrel, SSRIs	CYP2C19	rs12248560	CYP2C19|clopidogrel|drug	*17
+medicine	Warfarin	CYP2C9	rs1799853	warfarin|CYP2C9|drug	*2
+medicine	Warfarin	CYP2C9	rs1057910	warfarin|CYP2C9|drug	*3
+medicine	Warfarin	VKORC1	rs9923231	warfarin|VKORC1|drug	
+medicine	Statins (muscle pain)	SLCO1B1	rs4149056	statin|simvastatin|myopathy|drug	
+medicine	Fluorouracil	DPYD	rs3918290	fluorouracil|capecitabine|DPYD|drug	*2A
+medicine	Thiopurines	TPMT	rs1142345	thiopurine|mercaptopurine|TPMT|drug	
+medicine	Thiopurines	NUDT15	rs116855232	thiopurine|mercaptopurine|NUDT15|drug	
+medicine	Tacrolimus	CYP3A5	rs776746	tacrolimus|CYP3A5|drug	*3
+medicine	Abacavir (HLA-B*57:01 tag)	HCP5	rs2395029	abacavir|HLA-B|hypersens	tag SNP, imperfect
+trait	Lactose tolerance	MCM6	rs4988235	lactase|lactose	
+trait	Alcohol flush	ALDH2	rs671	alcohol|ALDH2|flush	
+trait	Alcohol metabolism	ADH1B	rs1229984	alcohol|ADH1B	
+trait	Caffeine metabolism	CYP1A2	rs762551	caffeine|CYP1A2	
+trait	Eye colour (blue/brown)	HERC2	rs12913832	eye colo|pigment	
+trait	Red hair / freckles	MC1R	rs1805007	hair|pigment|freckl|melanoma	
+trait	Earwax type	ABCC11	rs17822931	earwax|cerumen|ABCC11	
+trait	Sprint vs endurance	ACTN3	rs1815739	ACTN3|muscle|athlet	
+ancestry	Ancestry marker	SLC24A5	rs1426654	pigment|skin|SLC24A5	
+ancestry	Ancestry marker	SLC45A2	rs16891982	pigment|skin|SLC45A2	
+ancestry	Ancestry marker	EDAR	rs3827760	EDAR|hair	
+ancestry	Ancestry marker	ACKR1	rs2814778	Duffy|ACKR1|DARC	
+ancestry	Ancestry marker	OCA2	rs1800414	OCA2|pigment	

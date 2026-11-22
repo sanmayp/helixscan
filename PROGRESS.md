@@ -16,3 +16,10 @@
 - M0 validation: `cargo fmt --all`, `cargo clippy --all-targets -- -D warnings`, `cargo test` all pass.
 
 Next: M1 verified panel builder.
+
+## M1 — complete
+
+- Implemented the verified Ensembl GRCh38 panel builder, seed and phenotype-term searches, allele-frequency capture, APOE rules and pharmacogenetic rule data.
+- Committed panel contains 77 variants and three searched traits. One seed (`rs10811661`) was dropped because its expected gene was absent within 50 kb; `data/panel.drop.log` records the reason. Amblyopia remains a searchable trait with no qualifying markers and the required explanation.
+- Allele normalization supports SNVs and small insertions/deletions, including exact junction-context reconstruction tests.
+- Validation: `cargo fmt --all`, `cargo clippy -p helixscan-panel --all-targets -- -D warnings` and `cargo test -p helixscan-panel` pass.

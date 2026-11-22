@@ -1,0 +1,90 @@
+# Research/education interpretations. These data never prescribe a dose.
+version = 1
+source = "CPIC-style pharmacogenetic phenotype rules; verify current clinical guidance"
+
+[[genes]]
+gene = "CYP2C19"
+markers = ["rs4244285", "rs4986893", "rs12248560"]
+intermediate_text = "CYP2C19 intermediate metabolizer"
+consult = "Show this to your doctor or pharmacist; do not change any medicine on your own."
+[[genes.rules]]
+when = "loss=0 and rapid=0"
+text = "CYP2C19 normal metabolizer"
+[[genes.rules]]
+when = "loss=0 and rapid=1"
+text = "CYP2C19 rapid metabolizer"
+[[genes.rules]]
+when = "loss=0 and rapid>=2"
+text = "CYP2C19 ultrarapid metabolizer"
+[[genes.rules]]
+when = "loss>=2"
+text = "CYP2C19 poor metabolizer"
+[[genes.rules]]
+when = "loss=1"
+text = "CYP2C19 intermediate metabolizer"
+
+[[genes]]
+gene = "CYP2C9/VKORC1"
+markers = ["rs1799853", "rs1057910", "rs9923231"]
+consult = "Show this to your doctor or pharmacist; do not change any medicine on your own."
+[[genes.rules]]
+when = "any_alt"
+text = "The genotype affects warfarin treatment; the prescriber uses an official dosing table."
+[[genes.rules]]
+when = "default"
+text = "No warfarin-associated alleles in this small panel; this alone does not establish a treatment plan."
+
+[[genes]]
+gene = "SLCO1B1"
+markers = ["rs4149056"]
+consult = "Show this to your doctor or pharmacist; do not change any medicine on your own."
+[[genes.rules]]
+when = "rs4149056_alt>0"
+text = "Higher simvastatin muscle side-effect risk."
+[[genes.rules]]
+when = "default"
+text = "The checked simvastatin-associated allele was not found; other risk factors remain."
+
+[[genes]]
+gene = "DPYD"
+markers = ["rs3918290"]
+consult = "Show this to your doctor or pharmacist; do not change any medicine on your own."
+[[genes.rules]]
+when = "rs3918290_alt>0"
+text = "Reduced DPD and high fluorouracil toxicity risk; confirm before treatment."
+[[genes.rules]]
+when = "default"
+text = "DPYD *2A was not found in this panel; this does not exclude other reduced-function alleles."
+
+[[genes]]
+gene = "TPMT/NUDT15"
+markers = ["rs1142345", "rs116855232"]
+consult = "Show this to your doctor or pharmacist; do not change any medicine on your own."
+[[genes.rules]]
+when = "any_alt"
+text = "Thiopurine toxicity risk associated with the checked TPMT/NUDT15 allele."
+[[genes.rules]]
+when = "default"
+text = "The checked thiopurine-associated alleles were not found; other risk alleles are not excluded."
+
+[[genes]]
+gene = "CYP3A5"
+markers = ["rs776746"]
+consult = "Show this to your doctor or pharmacist; do not change any medicine on your own."
+[[genes.rules]]
+when = "rs776746_ref>0"
+text = "CYP3A5 *1 carrier: tacrolimus requirements may differ; the prescriber interprets this."
+[[genes.rules]]
+when = "default"
+text = "No CYP3A5 *1 allele was called at this marker; this small panel does not define all metabolism."
+
+[[genes]]
+gene = "HCP5"
+markers = ["rs2395029"]
+consult = "Show this to your doctor or pharmacist; do not change any medicine on your own."
+[[genes.rules]]
+when = "rs2395029_alt>0"
+text = "Possible HLA-B*57:01 tag. Confirm with an HLA test before abacavir; this tag is imperfect."
+[[genes.rules]]
+when = "default"
+text = "The HCP5 tag allele was not found; this is not a full HLA test."
