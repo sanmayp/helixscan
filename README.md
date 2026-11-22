@@ -17,7 +17,9 @@ The scan, serve, panel-builder, simulator, and benchmark commands are being impl
 
 ## Dependencies
 
-Public Rust crates are used for infrastructure (not copied algorithm code). The workspace currently uses `wgpu`, `anyhow`, and `pollster`. The final list will accompany the completed project.
+Public crates.io dependencies are used for infrastructure, not copied algorithm code. Direct workspace dependencies are: `anyhow` (errors), `clap` (CLI arguments), `crossbeam-channel` (bounded worker queues), `flate2` (gzip input), `pollster` (GPU futures), `rand` (reproducible simulation), `rayon` (parallel simulation), `regex` (panel-term filtering), `serde` and `serde_json` (data formats), `toml` (versioned pharmacogenetic rules), `ureq` (Ensembl HTTPS requests), and `wgpu` (GPU adapter access). Transitive dependencies are locked in `Cargo.lock`. SIMD algorithms and application scanner code remain original project code.
+
+The scanner currently uses a scalar CPU k-mer path. AVX2/AVX-512 and GPU compute remain milestone work; their earlier helper stubs are not claimed as completed acceleration. A GPU adapter probe is available. Reports are research summaries, not clinical pharmacogenetic or ancestry interpretations.
 
 ## Safety
 

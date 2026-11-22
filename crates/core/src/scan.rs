@@ -3,7 +3,7 @@ use crate::{
     fastq::{FastqReader, gzip_reader},
     genotype::{GenotypeCall, call},
     index::scan_read,
-    marker::{MarkerLocal, sample_checks},
+    marker::{MarkerIndex, MarkerLocal, sample_checks},
     qc::QcLocal,
 };
 use anyhow::Result;
@@ -36,6 +36,7 @@ pub fn scan_path(
 ) -> Result<ScanResult> {
     let start = Instant::now();
     let index = Arc::new(PanelIndex::new(panel));
+    let markers_index = Arc::new(MarkerIndex::new(panel));
     let file = std::fs::File::open(path)?;
     let source: Box<dyn std::io::Read + Send> = if path.extension().is_some_and(|x| x == "gz") {
         gzip_reader(path)?
@@ -55,6 +56,7 @@ pub fn scan_path(
         for _ in 0..workers {
             let rx = rx.clone();
             let index = index.clone();
+            let markers_index = markers_index.clone();
             let local_tx = local_tx.clone();
             let recycle_tx = recycle_tx.clone();
             s.spawn(move || {
@@ -72,7 +74,7 @@ pub fn scan_path(
                         let qual = &batch.buf[r.qual_off..r.qual_off + r.seq_len];
                         scan_read(&index, seq, qual, &mut c);
                         q.add(seq, qual);
-                        m.add(seq);
+                        m.add(seq, &markers_index);
                     }
                     batch.records.clear();
                     let _ = recycle_tx.try_send(std::mem::take(&mut batch.buf));
@@ -108,12 +110,8 @@ pub fn scan_path(
         .map(|(v, c)| call(v, c, "unclear"))
         .collect::<Vec<_>>();
     let called = calls.iter().filter(|c| c.called).count();
-    let checks = sample_checks(
-        panel,
-        &calls,
-        &qc.finish(called, panel.variants.len()),
-        &markers,
-    );
+    let preliminary_qc = qc.finish(called, panel.variants.len());
+    let checks = sample_checks(panel, &calls, &preliminary_qc, &markers);
     let sex = checks.sex.classification.clone();
     let calls = panel
         .variants
@@ -121,7 +119,9 @@ pub fn scan_path(
         .zip(&counts)
         .map(|(v, c)| call(v, c, &sex))
         .collect::<Vec<_>>();
+    let called = calls.iter().filter(|c| c.called).count();
     let qc = qc.finish(called, panel.variants.len());
+    let checks = sample_checks(panel, &calls, &qc, &markers);
     Ok(ScanResult {
         calls,
         qc,

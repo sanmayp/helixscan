@@ -92,7 +92,54 @@ pub fn chunk_reads(
             }
             out.extend_from_slice(format!("@sim-{id}-{}\n", v.rsid).as_bytes());
         } else {
-            let record = make_record(&mut rng, id, &mut seq, &mut qual, sequence_len);
+            let background = id as usize - variant_total;
+            let marker_every = 16usize;
+            let telomeric =
+                config.telomeric_fraction > 0.0 && rng.random::<f64>() < config.telomeric_fraction;
+            let marker = panel.marker_regions.iter().find(|r| {
+                if background.is_multiple_of(marker_every) {
+                    r.name == "ACTB"
+                } else {
+                    background
+                        .checked_sub(1)
+                        .is_some_and(|background| background.is_multiple_of(marker_every))
+                        && matches!(config.sex, Sex::Xy)
+                        && r.name == "SRY"
+                }
+            });
+            let record = if let Some(region) = marker {
+                let max = region.sequence.len().saturating_sub(sequence_len);
+                let start = rng.random_range(0..=max);
+                seq = region.sequence.as_bytes()[start..start + sequence_len].to_vec();
+                if rng.random_bool(0.5) {
+                    reverse_complement(&mut seq);
+                }
+                add_errors(&mut seq, &mut qual, &mut rng, 0.0);
+                format!(
+                    "@sim-{id}-marker-{}\n{}\n+\n{}\n",
+                    region.name,
+                    String::from_utf8_lossy(&seq),
+                    String::from_utf8_lossy(&qual.iter().map(|q| q + 33).collect::<Vec<_>>())
+                )
+            } else if telomeric {
+                let motif = if rng.random_bool(0.5) {
+                    b"TTAGGG".as_slice()
+                } else {
+                    b"CCCTAA".as_slice()
+                };
+                seq.resize(sequence_len, b'A');
+                for (i, base) in seq.iter_mut().enumerate() {
+                    *base = motif[i % 6];
+                }
+                qual.resize(sequence_len, 35);
+                format!(
+                    "@sim-{id}-telomere\n{}\n+\n{}\n",
+                    String::from_utf8_lossy(&seq),
+                    String::from_utf8_lossy(&qual.iter().map(|q| q + 33).collect::<Vec<_>>())
+                )
+            } else {
+                make_record(&mut rng, id, &mut seq, &mut qual, sequence_len)
+            };
             out.extend_from_slice(record.as_bytes());
             continue;
         }
@@ -201,6 +248,27 @@ pub fn fill_background(seq: &mut [u8], rng: &mut SmallRng) {
         } else {
             b'T'
         }
+    }
+}
+pub fn add_errors(seq: &mut [u8], quality: &mut Vec<u8>, rng: &mut SmallRng, n_rate: f64) {
+    quality.resize(seq.len(), 0);
+    for (i, q) in quality.iter_mut().enumerate() {
+        let error = 0.0003 + 0.002 * i as f64 / (seq.len().max(2) - 1) as f64;
+        let n = rng.random::<f64>() < n_rate;
+        if n || rng.random::<f64>() < error {
+            seq[i] = match seq[i] {
+                b'A' => b'C',
+                b'C' => b'G',
+                b'G' => b'T',
+                b'T' => b'A',
+                x => x,
+            };
+        }
+        *q = if n || rng.random::<f64>() < 0.06 {
+            rng.random_range(7..20)
+        } else {
+            rng.random_range(25..41)
+        };
     }
 }
 pub fn make_record(

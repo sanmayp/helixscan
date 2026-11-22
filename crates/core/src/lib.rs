@@ -3,6 +3,7 @@ pub mod fastq;
 pub mod genotype;
 pub mod index;
 pub mod marker;
+pub mod pgx;
 pub mod qc;
 pub mod report;
 pub mod scan;

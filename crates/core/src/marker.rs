@@ -1,16 +1,20 @@
 use crate::{Panel, genotype::GenotypeCall};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SampleChecks {
     pub sex: SexReport,
     pub telomere: TelomereReport,
     pub ancestry: Vec<AncestryScore>,
+    pub ancestry_summary: String,
 }
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SexReport {
     pub classification: String,
     pub y_reads_per_million: f64,
     pub control_reads_per_million: f64,
+    pub evidence: String,
 }
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TelomereReport {
@@ -24,6 +28,7 @@ pub struct AncestryScore {
     pub population: String,
     pub log_likelihood: f64,
     pub difference: f64,
+    pub markers: usize,
 }
 #[derive(Clone, Debug, Default)]
 pub struct MarkerLocal {
@@ -37,13 +42,53 @@ impl MarkerLocal {
         self.control += other.control;
         self.telomeric += other.telomeric;
     }
-    pub fn add(&mut self, seq: &[u8]) {
+    pub fn add(&mut self, seq: &[u8], markers: &MarkerIndex) {
         if tandem(seq, b"TTAGGG") >= 7 || tandem(seq, b"CCCTAA") >= 7 {
             self.telomeric += 1;
         }
+        let mut y = false;
+        let mut control = false;
+        for window in seq.windows(crate::KMER_SIZE) {
+            let Some(key) = crate::kmer(window) else {
+                continue;
+            };
+            y |= markers.y.contains(&key);
+            control |= markers.control.contains(&key);
+        }
+        self.y += u64::from(y);
+        self.control += u64::from(control);
     }
 }
-fn tandem(seq: &[u8], motif: &[u8]) -> usize {
+#[derive(Debug, Default)]
+pub struct MarkerIndex {
+    pub y: HashSet<u64>,
+    pub control: HashSet<u64>,
+}
+impl MarkerIndex {
+    pub fn new(panel: &Panel) -> Self {
+        let keys = |name: &str| {
+            panel
+                .marker_regions
+                .iter()
+                .filter(|r| r.name == name)
+                .flat_map(|r| {
+                    r.sequence
+                        .as_bytes()
+                        .windows(crate::KMER_SIZE)
+                        .filter_map(crate::kmer)
+                })
+                .collect::<HashSet<_>>()
+        };
+        let mut x = keys("RPS4X");
+        x.extend(keys("KDM6A"));
+        let control = keys("ACTB");
+        let mut y = keys("SRY");
+        y.extend(keys("UTY"));
+        y.retain(|key| !x.contains(key) && !control.contains(key));
+        Self { y, control }
+    }
+}
+pub fn tandem(seq: &[u8], motif: &[u8]) -> usize {
     let mut best = 0;
     for start in 0..motif.len() {
         let mut n = 0;
@@ -64,141 +109,94 @@ pub fn sample_checks(
     qc: &crate::qc::Qc,
     m: &MarkerLocal,
 ) -> SampleChecks {
-    let reads = qc.reads.max(1) as f64;
+    let reads = qc.reads as f64;
+    if qc.reads == 0 {
+        return SampleChecks::default();
+    }
     let y = m.y as f64 / reads * 1e6;
-    let c = m.control as f64 / reads * 1e6;
-    let sex = if y > c * 2.0 && y > 10.0 {
+    let control = m.control as f64 / reads * 1e6;
+    // Deliberately broad research heuristics, not a sex or identity determination.
+    let sex = if y > control && y > 1_000.0 {
         "XY"
-    } else if y < 2.0 && c > 1.0 {
+    } else if y < control * 0.05 && control > 1_000.0 {
         "XX"
     } else {
         "unclear"
     };
     let ancestry = ancestry(panel, calls);
-    SampleChecks{sex:SexReport{classification:sex.into(),y_reads_per_million:y,control_reads_per_million:c},telomere:TelomereReport{telomeric_reads:m.telomeric,reads_per_million:m.telomeric as f64/reads*1e6,length_adjusted_index:m.telomeric as f64/reads*1e6*150.0/qc.mean_len.max(1.0),message:"DNA sequence cannot tell your age; this is a rough research measure of telomere DNA, which shortens with age on average".into()},ancestry}
+    let markers = ancestry.first().map_or(0, |x| x.markers);
+    let ancestry_summary = if markers == 0 {
+        "No population-frequency markers met the depth threshold.".into()
+    } else if let Some(best) = ancestry.first() {
+        format!(
+            "Closest reference group: {}; next group is {:.1} log-likelihood units behind. Only {markers} markers were used; this is rough.",
+            best.population,
+            ancestry.get(1).map_or(0.0, |x| x.difference)
+        )
+    } else {
+        "No ancestry similarity result.".into()
+    };
+    SampleChecks {
+        sex: SexReport {
+            classification: sex.into(),
+            y_reads_per_million: y,
+            control_reads_per_million: control,
+            evidence: "XY: Y > control and >1,000 reads/million. XX: Y <5% of control and control >1,000 reads/million. Otherwise unclear; this is not a sex or identity determination.".into(),
+        },
+        telomere: TelomereReport {
+            telomeric_reads: m.telomeric,
+            reads_per_million: m.telomeric as f64 / reads * 1e6,
+            length_adjusted_index: m.telomeric as f64 / reads * 1e6 * 150.0
+                / qc.mean_len.max(1.0),
+            message: "DNA sequence cannot tell your age; this is a rough research measure of telomere DNA, which shortens with age on average".into(),
+        },
+        ancestry,
+        ancestry_summary,
+    }
 }
 pub fn ancestry(panel: &Panel, calls: &[GenotypeCall]) -> Vec<AncestryScore> {
     let mut out = Vec::new();
-    for pop in ["AFR", "AMR", "EAS", "EUR", "SAS"] {
-        let mut ll = 0.0;
-        for (v, c) in panel.variants.iter().zip(calls) {
-            if !c.called {
+    for population in ["AFR", "AMR", "EAS", "EUR", "SAS"] {
+        let mut log_likelihood = 0.0;
+        let mut markers = 0;
+        for (variant, call) in panel.variants.iter().zip(calls) {
+            if !call.called {
                 continue;
             }
-            let Some(freq) = v.frequencies.get(pop) else {
+            let Some(freq) = variant.frequencies.get(population) else {
                 continue;
             };
-            let genotype = c.genotype.split('/').collect::<Vec<_>>();
-            let p = if genotype.len() == 1 {
-                0.5
+            let copies = call.genotype.split('/').collect::<Vec<_>>();
+            let frequency =
+                |allele: &str| freq.get(allele).copied().unwrap_or(0.01).clamp(0.01, 0.99);
+            let probability = if copies.len() == 1 {
+                frequency(copies[0])
             } else {
-                let f = |a: &str| {
-                    if a == v.ref_allele {
-                        freq.get(&v.ref_allele).copied().unwrap_or(0.01)
-                    } else {
-                        freq.get(a).copied().unwrap_or(0.01)
-                    }
-                };
-                let f0 = f(genotype[0]).clamp(0.01, 0.99);
-                let f1 = f(genotype[1]).clamp(0.01, 0.99);
-                if genotype[0] == genotype[1] {
+                let f0 = frequency(copies[0]);
+                let f1 = frequency(copies[1]);
+                if copies[0] == copies[1] {
                     f0 * f0
                 } else {
                     2.0 * f0 * f1
                 }
             };
-            ll += p.max(1e-12).ln();
+            log_likelihood += probability.max(1e-12).ln();
+            markers += 1;
         }
         out.push(AncestryScore {
-            population: pop.into(),
-            log_likelihood: ll,
+            population: population.into(),
+            log_likelihood,
             difference: 0.0,
+            markers,
         });
     }
     let best = out
         .iter()
         .map(|x| x.log_likelihood)
         .fold(f64::NEG_INFINITY, f64::max);
-    for x in &mut out {
-        x.difference = best - x.log_likelihood;
+    for score in &mut out {
+        score.difference = best - score.log_likelihood;
     }
+    out.sort_by(|a, b| a.difference.total_cmp(&b.difference));
     out
-}
-pub fn pgx_interpretations(panel: &Panel, calls: &[GenotypeCall]) -> Vec<crate::report::PgxReport> {
-    let mut results = Vec::new();
-    for gene in [
-        "CYP2C19",
-        "CYP2C9/VKORC1",
-        "SLCO1B1",
-        "DPYD",
-        "TPMT/NUDT15",
-        "CYP3A5",
-        "HCP5",
-    ] {
-        let text = if gene == "CYP2C19" {
-            let loss = call_alt(panel, calls, "rs4244285") + call_alt(panel, calls, "rs4986893");
-            let rapid = call_alt(panel, calls, "rs12248560");
-            if loss >= 2 {
-                "CYP2C19 poor metabolizer"
-            } else if loss == 1 {
-                "CYP2C19 intermediate metabolizer"
-            } else if rapid >= 2 {
-                "CYP2C19 ultrarapid metabolizer"
-            } else if rapid == 1 {
-                "CYP2C19 rapid metabolizer"
-            } else {
-                "CYP2C19 normal metabolizer"
-            }
-        } else {
-            match gene {
-                "CYP2C9/VKORC1" => {
-                    "The genotype may affect warfarin treatment; the prescriber uses an official dosing table."
-                }
-                "SLCO1B1" => {
-                    if call_alt(panel, calls, "rs4149056") > 0 {
-                        "Higher simvastatin muscle side-effect risk."
-                    } else {
-                        "The checked simvastatin-associated allele was not found; other risk factors remain."
-                    }
-                }
-                "DPYD" => {
-                    if call_alt(panel, calls, "rs3918290") > 0 {
-                        "Reduced DPD and high fluorouracil toxicity risk; confirm before treatment."
-                    } else {
-                        "DPYD *2A was not found in this panel; other alleles are not excluded."
-                    }
-                }
-                "TPMT/NUDT15" => {
-                    "Interpret the checked TPMT/NUDT15 alleles before thiopurine treatment."
-                }
-                "CYP3A5" => "Interpret CYP3A5 *1 carrier status with the prescriber.",
-                "HCP5" => {
-                    if call_alt(panel, calls, "rs2395029") > 0 {
-                        "Possible HLA-B*57:01 tag. Confirm with an HLA test before abacavir; this tag is imperfect."
-                    } else {
-                        "The HCP5 tag allele was not found; this is not a full HLA test."
-                    }
-                }
-                _ => "No data interpretation",
-            }
-        };
-        results.push(crate::report::PgxReport {
-            gene: gene.into(),
-            phenotype: text.into(),
-            consult:
-                "Show this to your doctor or pharmacist; do not change any medicine on your own."
-                    .into(),
-        });
-    }
-    results
-}
-fn call_alt(panel: &Panel, calls: &[GenotypeCall], id: &str) -> u8 {
-    panel
-        .variants
-        .iter()
-        .position(|v| v.rsid == id)
-        .and_then(|i| calls.get(i))
-        .filter(|c| c.called)
-        .map(|c| c.alt_votes.iter().sum::<u32>().min(2) as u8)
-        .unwrap_or(0)
 }

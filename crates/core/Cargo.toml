@@ -4,10 +4,14 @@ version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 
+[dev-dependencies]
+helixscan-sim = { path = "../sim" }
+
 [dependencies]
 helixscan-panel = { path = "../panel" }
 anyhow.workspace = true
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+toml.workspace = true
 crossbeam-channel = "0.5"
 flate2 = { version = "1", features = ["zlib-rs"] }

@@ -9,6 +9,7 @@ license = "MIT"
 [workspace.dependencies]
 anyhow = "1"
 wgpu = "26"
+toml = "0.8"
 
 [profile.release]
 lto = "thin"

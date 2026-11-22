@@ -86,7 +86,7 @@ pub fn report(
             evidence: vec![],
         });
     }
-    let pgx = crate::marker::pgx_interpretations(panel, &calls);
+    let pgx = crate::pgx::pgx_interpretations(panel, &calls);
     Report{schema_version:1,disclaimer:"Research and education only. Not a medical diagnosis. Talk to a doctor or genetic counselor about any result.".into(),engine,elapsed_seconds,qc,apoe:apoe(panel,&calls),variants:calls,traits,pgx,sample_checks,limitations:vec!["Your age".into(),"Blood pressure".into(),"Whether you will get a disease".into(),"Colour blindness".into(),"CYP2D6 type".into(),"Full HLA type".into(),"Rare variants outside the panel".into()]}
 }
 pub fn text_report(r: &Report) -> String {

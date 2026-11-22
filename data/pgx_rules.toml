@@ -8,19 +8,28 @@ markers = ["rs4244285", "rs4986893", "rs12248560"]
 intermediate_text = "CYP2C19 intermediate metabolizer"
 consult = "Show this to your doctor or pharmacist; do not change any medicine on your own."
 [[genes.rules]]
-when = "loss=0 and rapid=0"
+when = "rs4244285:A=0 and rs4986893:A=0 and rs12248560:T=0"
 text = "CYP2C19 normal metabolizer"
 [[genes.rules]]
-when = "loss=0 and rapid=1"
+when = "rs4244285:A=0 and rs4986893:A=0 and rs12248560:T=1"
 text = "CYP2C19 rapid metabolizer"
 [[genes.rules]]
-when = "loss=0 and rapid>=2"
+when = "rs4244285:A=0 and rs4986893:A=0 and rs12248560:T>=2"
 text = "CYP2C19 ultrarapid metabolizer"
 [[genes.rules]]
-when = "loss>=2"
+when = "rs4244285:A=1 and rs4986893:A=1"
 text = "CYP2C19 poor metabolizer"
 [[genes.rules]]
-when = "loss=1"
+when = "rs4244285:A>=2"
+text = "CYP2C19 poor metabolizer"
+[[genes.rules]]
+when = "rs4986893:A>=2"
+text = "CYP2C19 poor metabolizer"
+[[genes.rules]]
+when = "rs4244285:A>0"
+text = "CYP2C19 intermediate metabolizer"
+[[genes.rules]]
+when = "rs4986893:A>0"
 text = "CYP2C19 intermediate metabolizer"
 
 [[genes]]
@@ -39,7 +48,7 @@ gene = "SLCO1B1"
 markers = ["rs4149056"]
 consult = "Show this to your doctor or pharmacist; do not change any medicine on your own."
 [[genes.rules]]
-when = "rs4149056_alt>0"
+when = "rs4149056:T>0"
 text = "Higher simvastatin muscle side-effect risk."
 [[genes.rules]]
 when = "default"
@@ -50,7 +59,7 @@ gene = "DPYD"
 markers = ["rs3918290"]
 consult = "Show this to your doctor or pharmacist; do not change any medicine on your own."
 [[genes.rules]]
-when = "rs3918290_alt>0"
+when = "rs3918290:A>0"
 text = "Reduced DPD and high fluorouracil toxicity risk; confirm before treatment."
 [[genes.rules]]
 when = "default"
@@ -72,7 +81,7 @@ gene = "CYP3A5"
 markers = ["rs776746"]
 consult = "Show this to your doctor or pharmacist; do not change any medicine on your own."
 [[genes.rules]]
-when = "rs776746_ref>0"
+when = "rs776746:T>0"
 text = "CYP3A5 *1 carrier: tacrolimus requirements may differ; the prescriber interprets this."
 [[genes.rules]]
 when = "default"
@@ -83,7 +92,7 @@ gene = "HCP5"
 markers = ["rs2395029"]
 consult = "Show this to your doctor or pharmacist; do not change any medicine on your own."
 [[genes.rules]]
-when = "rs2395029_alt>0"
+when = "rs2395029:G>0"
 text = "Possible HLA-B*57:01 tag. Confirm with an HLA test before abacavir; this tag is imperfect."
 [[genes.rules]]
 when = "default"

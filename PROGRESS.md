@@ -37,3 +37,15 @@ Next: M1 verified panel builder.
 - Added likelihood genotype calls, depth/GQ, multi-allele selection, hemizygous XY calls, and mitochondrial heteroplasmy.
 - Exhaustive FASTQ block boundaries, low-quality variant rejection, both strands, indel voting and simulated truth agreement pass: **100.000% (77/77 variants called; depth 40)**.
 - Validation: `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace` pass.
+
+## M3b — complete
+
+- Added single-pass marker checks using bounded SRY, UTY, RPS4X, KDM6A and ACTB sequences. Y evidence excludes X-homolog and ACTB control k-mers. Explicit broad thresholds classify simulated XX/XY samples; low or intermediate evidence remains `unclear`.
+- Added telomeric read counting (at least seven tandem repeats), length-adjusted reporting and non-age-estimation wording.
+- Added five population log-likelihood comparisons from called panel variants, including marker counts, relative scores and a cautious summary. This is limited to available panel markers and is not an ancestry or identity determination.
+- Added allele-specific versioned TOML PGx evaluation, insufficient-coverage handling, hemizygous XY dosage and data-derived sensitive-report limitations. Simulator options now generate sex-marker, telomere and per-population-frequency reads.
+- Preserved all 77 verified variant records and contexts. The earlier phantom FASTQ record was a test-file race, not a parser defect; fixtures now use unique paths.
+- Measured on 20,000-read XX/XY simulation fixtures (seed 71, depth 20): both sex-marker classifications passed. A 0.2 telomeric fraction produced over 500 telomeric reads. AFR frequency draws produced scores for all five groups. Versioned PGx rules and low-coverage failures passed.
+- Validation: 24 workspace tests pass, including **100.000% / 77 of 77** original simulated genotype agreement; `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace` pass.
+
+Next: M4 real AVX2 and AVX-512 encoders, parity tests and benchmark.

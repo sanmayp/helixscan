@@ -316,7 +316,7 @@ impl<C: Rest> PanelBuilder<C> {
             reference: "GRCh38".into(),
             ensembl_release: release,
             fetched_at: now,
-            pgx_rules: include_str!("../../../data/pgx_rules.toml").to_string(),
+            pgx_rules: String::new(),
             searched_traits,
             marker_regions,
             variants,
@@ -340,7 +340,13 @@ impl<C: Rest> PanelBuilder<C> {
         })
     }
     fn fetch_marker_regions(&self) -> Vec<MarkerRegion> {
-        let names = [("SRY", "Y"), ("UTY", "Y"), ("RPS4X", "X"), ("ACTB", "2")];
+        let names = [
+            ("SRY", "Y"),
+            ("UTY", "Y"),
+            ("RPS4X", "X"),
+            ("KDM6A", "X"),
+            ("ACTB", "7"),
+        ];
         let mut regions = Vec::new();
         for (name, expected_chr) in names {
             match self
@@ -355,9 +361,12 @@ impl<C: Rest> PanelBuilder<C> {
                     if chr != expected_chr {
                         bail!("unexpected chromosome for {name}");
                     }
+                    // A bounded gene-region sequence is sufficient for this
+                    // rough control; avoid multi-megabyte UTY/ACTB downloads.
+                    let seq_end = end.min(start + 19_999);
                     let sequence = self
                         .client
-                        .json(&format!("sequence/region/human/{chr}:{start}..{end}:1"))?;
+                        .json(&format!("sequence/region/human/{chr}:{start}..{seq_end}:1"))?;
                     Ok(MarkerRegion {
                         name: name.into(),
                         chr,

@@ -169,3 +169,150 @@ fn fastq_block_boundaries_preserve_records() {
         assert_eq!(reads, 2, "block size {size}");
     }
 }
+
+fn simulated_sample(
+    sex: helixscan_sim::Sex,
+    population: Option<&str>,
+    telomere: f64,
+) -> crate::scan::ScanResult {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let panel: crate::Panel =
+        serde_json::from_reader(std::fs::File::open(root.join("data/panel.json")).unwrap())
+            .unwrap();
+    let config = helixscan_sim::Config {
+        seed: 71,
+        depth: 20,
+        read_len: 150,
+        population: population.map(str::to_string),
+        sex,
+        telomeric_fraction: telomere,
+    };
+    let truth = helixscan_sim::truths(&panel, &config);
+    let path = root.join(format!(
+        "testdata/check-{sex:?}-{}-{telomere}.fastq",
+        population.unwrap_or("random")
+    ));
+    helixscan_sim::parallel_fastq(
+        std::fs::File::create(&path).unwrap(),
+        &panel,
+        20_000,
+        &config,
+        &truth,
+    )
+    .unwrap();
+    let result = crate::scan::scan_path(&path, &panel, 2, None).unwrap();
+    if std::env::var_os("HELIXSCAN_KEEP_FIXTURE").is_none() {
+        std::fs::remove_file(path).unwrap();
+    }
+    result
+}
+
+#[test]
+fn simulated_xy_and_xx_marker_reads_classify() {
+    for (sex, expected) in [
+        (helixscan_sim::Sex::Xy, "XY"),
+        (helixscan_sim::Sex::Xx, "XX"),
+    ] {
+        let result = simulated_sample(sex, None, 0.0);
+        assert_eq!(result.checks.sex.classification, expected);
+        assert!(result.checks.sex.control_reads_per_million > 1_000.0);
+        if expected == "XY" {
+            assert!(
+                result.checks.sex.y_reads_per_million > result.checks.sex.control_reads_per_million
+            );
+        } else {
+            assert!(
+                result.checks.sex.y_reads_per_million
+                    < result.checks.sex.control_reads_per_million * 0.05
+            );
+        }
+    }
+}
+
+#[test]
+fn simulated_telomeres_are_counted_at_seven_repeats() {
+    let result = simulated_sample(helixscan_sim::Sex::Xx, None, 0.2);
+    assert!(result.checks.telomere.telomeric_reads > 500);
+    assert!(result.checks.telomere.length_adjusted_index > 100_000.0);
+    assert!(
+        result
+            .checks
+            .telomere
+            .message
+            .contains("cannot tell your age")
+    );
+    assert_eq!(
+        crate::marker::tandem(b"TTAGGGTTAGGGTTAGGGTTAGGGTTAGGGTTAGGGTTAGGG", b"TTAGGG"),
+        7
+    );
+}
+
+#[test]
+fn simulated_population_frequency_draws_score_all_groups() {
+    let result = simulated_sample(helixscan_sim::Sex::Xx, Some("AFR"), 0.0);
+    assert_eq!(result.checks.ancestry.len(), 5);
+    assert!(result.checks.ancestry_summary.contains("this is rough"));
+    assert!(result.checks.ancestry[0].markers > 10);
+    assert!(result.checks.ancestry[0].difference.abs() < 1e-12);
+    // All called alleles were drawn from the selected population's frequencies.
+    assert!(result.checks.ancestry[0].log_likelihood.is_finite());
+    assert!(
+        result
+            .checks
+            .ancestry
+            .iter()
+            .all(|group| group.markers > 10)
+    );
+}
+
+#[test]
+fn simulated_pgx_calls_apply_versioned_rules() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let result = simulated_sample(helixscan_sim::Sex::Xx, None, 0.0);
+    let panel: crate::Panel =
+        serde_json::from_reader(std::fs::File::open(root.join("data/panel.json")).unwrap())
+            .unwrap();
+    let output = crate::pgx::pgx_interpretations(&panel, &result.calls);
+    assert!(!output.is_empty());
+    assert!(output.iter().all(|item| item.gene != "Rule-data error"));
+    assert!(
+        output
+            .iter()
+            .all(|item| item.consult.contains("pharmacist"))
+    );
+    assert!(
+        output
+            .iter()
+            .find(|item| item.gene == "CYP2C19")
+            .is_some_and(|item| item.phenotype.contains("metabolizer"))
+    );
+}
+
+#[test]
+fn pgx_low_coverage_is_not_a_normal_call() {
+    let panel = panel(variant("rs4244285", "G", "A"));
+    let call = crate::genotype::call(&panel.variants[0], &[0; 4], "unclear");
+    let output = crate::pgx::pgx_interpretations(&panel, &[call]);
+    assert!(output[0].phenotype.contains("could not be evaluated"));
+}
+
+#[test]
+fn sensitive_reports_and_limitations_are_data_derived() {
+    let mut v = variant("rs1", "A", "C");
+    v.section = "carrier".into();
+    let p = panel(v.clone());
+    let call = crate::genotype::call(&v, &[20, 0, 0, 0], "unclear");
+    let qc = crate::qc::Qc {
+        reads: 1,
+        panel_coverage: 100.0,
+        ..Default::default()
+    };
+    let report = crate::report::report(&p, vec![call], qc, "test".into(), 0.0, Default::default());
+    assert!(
+        report.traits[0]
+            .message
+            .contains("This does NOT rule out risk")
+    );
+    assert!(report.limitations.iter().any(|x| x == "CYP2D6 type"));
+    assert!(report.disclaimer.contains("Not a medical diagnosis"));
+}

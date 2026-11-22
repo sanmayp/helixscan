@@ -109,6 +109,11 @@ pub fn call(v: &helixscan_panel::Variant, counts: &[u32; 4], sex: &str) -> Genot
         } else {
             alt.clone()
         };
+        base.gq = if d == 0 {
+            0
+        } else {
+            (-10.0 * ((r.min(aa) as f64 + 0.5) / (d as f64 + 1.0)).log10()).clamp(0.0, 99.0) as u8
+        };
     } else {
         base.genotype = match best {
             0 => format!("{0}/{0}", v.ref_allele),
@@ -116,7 +121,14 @@ pub fn call(v: &helixscan_panel::Variant, counts: &[u32; 4], sex: &str) -> Genot
             _ => format!("{0}/{0}", alt),
         };
     }
-    base.dosage = base.risk_allele.as_ref().map(|a| dose(&base, a, v));
+    if sex == "XY" && (v.chr == "X" || v.chr == "Y") {
+        base.dosage = base
+            .risk_allele
+            .as_ref()
+            .map(|risk| u8::from(base.genotype.split('/').any(|allele| allele == risk)));
+    } else {
+        base.dosage = base.risk_allele.as_ref().map(|risk| dose(&base, risk, v));
+    }
     base
 }
 
