@@ -15,6 +15,11 @@ use std::{
     time::Instant,
 };
 
+/// The P5000's measured 45.691 s GPU transfer/matching/readback time versus
+/// 1.320 s of complete CPU work on demo-1gb.fastq (11 workers) is too large
+/// for calibration to repay. Forced GPU mode still verifies real GPU results.
+const AUTO_CPU_POLICY: &str = "auto: CPU; Quadro P5000 measured 45.691s vs CPU 1.320s on demo-1gb.fastq (11 workers); CPU faster because GPU batch transfers + readback cost dominates; no GPU trial; use --backend gpu to benchmark";
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Backend {
     #[default]
@@ -62,10 +67,13 @@ pub fn scan_path(
     config: crate::GpuConfig,
 ) -> Result<Selection> {
     let simd = helixscan_core::encode::runtime();
-    if backend == Backend::Cpu {
-        return Ok(Selection::cpu(helixscan_core::scan::scan_path_with_simd(
-            path, panel, threads, progress, simd,
-        )?));
+    if matches!(backend, Backend::Cpu | Backend::Auto) {
+        let mut result =
+            helixscan_core::scan::scan_path_with_simd(path, panel, threads, progress, simd)?;
+        if backend == Backend::Auto {
+            result.engine = format!("{}; {AUTO_CPU_POLICY}", result.engine);
+        }
+        return Ok(Selection::cpu(result));
     }
     let cpu = helixscan_core::scan::scan_path_with_simd(path, panel, threads, progress, simd)?;
     let cpu_elapsed = cpu.elapsed_seconds;
@@ -358,27 +366,32 @@ mod tests {
         };
         assert!(scan_path(&path, &panel, 1, None, Backend::Gpu, config.clone()).is_err());
         let auto = scan_path(&path, &panel, 1, None, Backend::Auto, config).unwrap();
-        assert!(
-            auto.fallback_reason
-                .as_deref()
-                .is_some_and(|reason| reason.contains("unavailable"))
-        );
+        assert!(auto.fallback_reason.is_none());
+        assert!(auto.result.engine.contains("no GPU trial"));
+        assert!(auto.gpu_device.is_none());
         assert_eq!(auto.result.qc.reads, 6500);
     }
     #[test]
-    fn real_auto_selection_never_hides_a_candidate_mismatch() {
+    fn auto_uses_the_measured_cpu_policy_without_a_gpu_trial() {
         let path = root().join("testdata/small.fastq");
         let selection =
             scan_path(&path, &panel(), 2, None, Backend::Auto, Default::default()).unwrap();
-        if selection.result.engine.starts_with("GPU ") {
-            assert!(selection.fallback_reason.is_none());
-        } else {
-            let reason = selection.fallback_reason.unwrap();
-            assert!(
-                reason.contains("took")
-                    || reason.contains("failed")
-                    || reason.contains("unavailable")
-            );
-        }
+        assert!(selection.result.engine.contains(AUTO_CPU_POLICY));
+        assert!(selection.fallback_reason.is_none());
+        assert!(selection.gpu_device.is_none());
+        assert!(selection.gpu_stats.is_none());
+    }
+    #[test]
+    fn explicit_cpu_does_not_add_auto_operational_metadata() {
+        let selection = scan_path(
+            &root().join("testdata/small.fastq"),
+            &panel(),
+            2,
+            None,
+            Backend::Cpu,
+            Default::default(),
+        )
+        .unwrap();
+        assert!(!selection.result.engine.contains("auto:"));
     }
 }

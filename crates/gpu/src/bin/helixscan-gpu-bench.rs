@@ -47,10 +47,13 @@ fn main() -> Result<()> {
                 ..Default::default()
             },
         )?;
-        if selection.result.calls != cpu.calls {
-            anyhow::bail!("GPU benchmark disagrees with the CPU calls");
+        if selection.result.calls != cpu.calls
+            || serde_json::to_vec(&selection.result.qc)? != serde_json::to_vec(&cpu.qc)?
+            || serde_json::to_vec(&selection.result.checks)? != serde_json::to_vec(&cpu.checks)?
+        {
+            anyhow::bail!("GPU benchmark disagrees with the complete biological CPU result");
         }
-        let stats = selection.gpu_stats;
+        let stats = &selection.gpu_stats;
         println!(
             "{backend:?}\t{bytes}\t{:.6}\t{:.3}\t{}\t{}\t{}\t{}",
             start.elapsed().as_secs_f64(),
@@ -60,7 +63,11 @@ fn main() -> Result<()> {
             stats
                 .as_ref()
                 .map_or("-".into(), |s| s.workgroup.to_string()),
-            selection.fallback_reason.as_deref().unwrap_or("kept GPU")
+            if backend == Backend::Auto && selection.fallback_reason.is_none() {
+                "CPU selected without GPU trial"
+            } else {
+                selection.fallback_reason.as_deref().unwrap_or("kept GPU")
+            }
         );
     }
     Ok(())
