@@ -1,0 +1,32 @@
+{
+  "rs113993960": {
+    "populations": [
+      {"allele": "TCTT", "frequency": 1, "population": "1000GENOMES:phase_3:AFR"},
+      {"allele": "T", "frequency": 0.00399361022364217, "population": "1000GENOMES:phase_3:ALL"},
+      {"allele": "TCTT", "frequency": 0.996006389776358, "population": "1000GENOMES:phase_3:ALL"},
+      {"allele": "TCTT", "frequency": 0.989913544668588, "population": "1000GENOMES:phase_3:AMR"},
+      {"allele": "T", "frequency": 0.0100864553314121, "population": "1000GENOMES:phase_3:AMR"},
+      {"allele": "TCTT", "frequency": 1, "population": "1000GENOMES:phase_3:EAS"},
+      {"allele": "T", "frequency": 0.00894632206759443, "population": "1000GENOMES:phase_3:EUR"},
+      {"allele": "TCTT", "frequency": 0.991053677932406, "population": "1000GENOMES:phase_3:EUR"},
+      {"allele": "T", "frequency": 0.00408997955010225, "population": "1000GENOMES:phase_3:SAS"},
+      {"allele": "TCTT", "frequency": 0.995910020449898, "population": "1000GENOMES:phase_3:SAS"}
+    ]
+  },
+  "rs7903146": {
+    "populations": [
+      {"allele": "T", "frequency": 0.260211800302572, "population": "1000GENOMES:phase_3:AFR"},
+      {"allele": "C", "frequency": 0.739788199697428, "population": "1000GENOMES:phase_3:AFR"},
+      {"allele": "T", "frequency": 0.227835463258786, "population": "1000GENOMES:phase_3:ALL"},
+      {"allele": "C", "frequency": 0.772164536741214, "population": "1000GENOMES:phase_3:ALL"},
+      {"allele": "C", "frequency": 0.765129682997118, "population": "1000GENOMES:phase_3:AMR"},
+      {"allele": "T", "frequency": 0.234870317002882, "population": "1000GENOMES:phase_3:AMR"},
+      {"allele": "C", "frequency": 0.97718253968254, "population": "1000GENOMES:phase_3:EAS"},
+      {"allele": "T", "frequency": 0.0228174603174603, "population": "1000GENOMES:phase_3:EAS"},
+      {"allele": "C", "frequency": 0.682902584493042, "population": "1000GENOMES:phase_3:EUR"},
+      {"allele": "T", "frequency": 0.317097415506958, "population": "1000GENOMES:phase_3:EUR"},
+      {"allele": "C", "frequency": 0.701431492842536, "population": "1000GENOMES:phase_3:SAS"},
+      {"allele": "T", "frequency": 0.298568507157464, "population": "1000GENOMES:phase_3:SAS"}
+    ]
+  }
+}

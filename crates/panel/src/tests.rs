@@ -49,9 +49,6 @@ mod panel_tests {
             fn json(&self, path: &str) -> anyhow::Result<Value> {
                 match path {
                     "info/data?" => Ok(json!({"releases":[116]})),
-                    p if p.starts_with("variation/human/") && p.ends_with("pops=1") => {
-                        Ok(json!({"populations":[]}))
-                    }
                     p if p.starts_with("variation/human/") => Ok(
                         json!({"mappings":[{"assembly_name":"GRCh38","coord_system":"chromosome","start":100,"end":100,"seq_region_name":"19","allele_string":"T/C"}],"clinical_significance":[],"phenotypes":[{"trait":"Alzheimer disease","risk_allele":"C","pvalue":"1e-10","study":"PMID:1","source":"test"}]}),
                     ),
@@ -63,6 +60,11 @@ mod panel_tests {
                     }
                     _ => Err(anyhow!("unexpected")),
                 }
+            }
+            fn post(&self, path: &str, ids: &[String]) -> anyhow::Result<Value> {
+                assert_eq!(path, "variation/human?pops=1");
+                assert_eq!(ids, ["rs429358"]);
+                Ok(json!({}))
             }
         }
         let dir = std::env::temp_dir();

@@ -475,6 +475,48 @@ fn sensitive_reports_and_limitations_are_data_derived() {
     assert!(report.disclaimer.contains("Not a medical diagnosis"));
 }
 
+#[test]
+fn effect_allele_population_shares_use_hardy_weinberg_not_genotype_inference() {
+    let mut v = variant("rs-frequency", "C", "T");
+    v.effect_allele = Some("T".into());
+    v.effect_allele_status = helixscan_panel::EffectAlleleStatus::Supported;
+    v.frequencies.insert(
+        "ALL".into(),
+        [("C".into(), 0.75), ("T".into(), 0.25)].into(),
+    );
+    v.frequencies
+        .insert("AFR".into(), [("C".into(), 1.0)].into());
+    let call = crate::genotype::call(&v, &[10, 10, 0, 0], "XX");
+    let frequencies = call.population_frequencies.as_ref().unwrap();
+    let all = frequencies[0].as_ref().unwrap();
+    assert_eq!(all.population, "ALL");
+    assert_eq!(all.allele_frequency, 0.25);
+    assert_eq!(all.zero_copies, 0.5625);
+    assert_eq!(all.one_copy, 0.375);
+    assert_eq!(all.two_copies, 0.0625);
+    assert!(frequencies[1].is_none(), "absence is not evidence of zero");
+    assert_eq!(frequencies.len(), 6);
+    let json = serde_json::to_value(&call).unwrap();
+    assert_eq!(json["population_frequencies"][0]["zero_copies"], 0.5625);
+    assert_eq!(json["population_frequencies"][1], serde_json::Value::Null);
+
+    // Saved-report JSON must preserve the exact computed shares.
+    v.frequencies
+        .insert("EAS".into(), [("T".into(), 0.0228174603174603)].into());
+    let call = crate::genotype::call(&v, &[10, 10, 0, 0], "XX");
+    let json = serde_json::to_value(&call).unwrap();
+    let encoded = serde_json::to_string(&call).unwrap();
+    let restored: serde_json::Value = serde_json::from_str(&encoded).unwrap();
+    assert_eq!(restored, json);
+
+    v.frequencies.clear();
+    let frequencies = crate::genotype::call(&v, &[10, 10, 0, 0], "XX")
+        .population_frequencies
+        .unwrap();
+    assert_eq!(frequencies.len(), 6);
+    assert!(frequencies.iter().all(Option::is_none));
+}
+
 /// One genotype/dosage/JSON expectation for each embedded curated row.
 #[test]
 fn every_curated_row_produces_exact_marker_dosage_and_provenance() {

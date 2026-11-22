@@ -1,4 +1,48 @@
 use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct PopulationFrequency {
+    pub population: String,
+    /// Fraction of alleles carrying the effect allele in this population.
+    pub allele_frequency: f64,
+    /// Hardy-Weinberg shares of diploid people with 0, 1 or 2 effect alleles.
+    pub zero_copies: f64,
+    pub one_copy: f64,
+    pub two_copies: f64,
+}
+
+fn population_frequencies(
+    v: &helixscan_panel::Variant,
+) -> Option<Vec<Option<PopulationFrequency>>> {
+    let effect = if matches!(
+        v.effect_allele_status,
+        helixscan_panel::EffectAlleleStatus::Supported
+            | helixscan_panel::EffectAlleleStatus::Curated
+    ) {
+        v.effect_allele.as_deref()
+    } else {
+        None
+    }?;
+    Some(
+        ["ALL", "AFR", "AMR", "EAS", "EUR", "SAS"]
+            .into_iter()
+            .map(|population| {
+                let p = *v.frequencies.get(population)?.get(effect)?;
+                if !p.is_finite() || !(0.0..=1.0).contains(&p) {
+                    return None;
+                }
+                let q = 1.0 - p;
+                Some(PopulationFrequency {
+                    population: population.into(),
+                    allele_frequency: p,
+                    zero_copies: q * q,
+                    one_copy: 2.0 * p * q,
+                    two_copies: p * p,
+                })
+            })
+            .collect(),
+    )
+}
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct GenotypeCall {
     pub rsid: String,
@@ -25,6 +69,9 @@ pub struct GenotypeCall {
     pub evidence: Vec<helixscan_panel::Phenotype>,
     #[serde(default)]
     pub apoe: Option<String>,
+    /// None means no public effect-allele frequencies for this variant.
+    #[serde(default)]
+    pub population_frequencies: Option<Vec<Option<PopulationFrequency>>>,
 }
 fn dose(c: &GenotypeCall, allele: &str, v: &helixscan_panel::Variant) -> u8 {
     let i = if allele == v.ref_allele {
@@ -92,6 +139,7 @@ pub fn call(v: &helixscan_panel::Variant, counts: &[u32; 4], sex: &str) -> Genot
         trait_group: v.trait_group.clone(),
         evidence: v.phenotypes.clone(),
         apoe: None,
+        population_frequencies: population_frequencies(v),
     };
     if v.chr == "MT" {
         if d == 0 {

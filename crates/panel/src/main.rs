@@ -1,8 +1,6 @@
 use anyhow::{Result, bail};
 use clap::{Parser, Subcommand};
-use helixscan_panel::{
-    Ensembl, PanelBuilder, audit_panel_checked, effect_report::effect_report,
-};
+use helixscan_panel::{Ensembl, PanelBuilder, audit_panel_checked, effect_report::effect_report};
 use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;

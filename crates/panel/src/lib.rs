@@ -330,6 +330,7 @@ pub fn parse_seed(path: &Path) -> Result<Vec<Seed>> {
 }
 pub trait Rest {
     fn json(&self, path: &str) -> Result<Value>;
+    fn post(&self, path: &str, ids: &[String]) -> Result<Value>;
 }
 #[derive(Clone, Default)]
 pub struct Ensembl {
@@ -365,6 +366,34 @@ impl Ensembl {
             last.unwrap()
         ))
     }
+    pub fn post(&self, path: &str, ids: &[String]) -> Result<ureq::http::Response<ureq::Body>> {
+        let mut last = None;
+        for attempt in 0..3 {
+            if !self.delay.is_zero() {
+                thread::sleep(self.delay);
+            }
+            match ureq::post(&format!("https://rest.ensembl.org/{path}"))
+                .header("Content-Type", "application/json")
+                .header("User-Agent", "helixscan/0.1")
+                .config()
+                .timeout_global(Some(Duration::from_secs(120)))
+                .build()
+                .send_json(serde_json::json!({"ids": ids}))
+            {
+                Ok(r) => return Ok(r),
+                Err(e) => {
+                    last = Some(e);
+                    if attempt < 2 {
+                        thread::sleep(Duration::from_secs(1 << attempt));
+                    }
+                }
+            }
+        }
+        Err(anyhow!(
+            "Ensembl request failed after 3 retries: {}",
+            last.unwrap()
+        ))
+    }
 }
 impl Rest for Ensembl {
     fn json(&self, path: &str) -> Result<Value> {
@@ -383,6 +412,63 @@ impl Rest for Ensembl {
         fs::write(&cache, serde_json::to_vec(&value)?)?;
         Ok(value)
     }
+    fn post(&self, path: &str, ids: &[String]) -> Result<Value> {
+        Ok(Ensembl::post(self, path, ids)?.into_body().read_json()?)
+    }
+}
+
+/// Convert Ensembl's raw alleles to the exact normalized alleles used by the
+/// scanner. A deletion is the empty string, not its raw REF context or "-".
+fn panel_frequency_allele(v: &Variant, allele: &str) -> Option<String> {
+    if v.raw_ref.is_empty() && v.raw_alts.is_empty() {
+        return (allele == v.ref_allele || v.alts.iter().any(|a| a == allele))
+            .then(|| allele.to_string());
+    }
+    if allele == v.raw_ref {
+        return Some(v.ref_allele.clone());
+    }
+    let index = v.raw_alts.iter().position(|a| a == allele)?;
+    if v.raw_ref == "-" {
+        Some(allele.replace('-', ""))
+    } else {
+        normalize_alleles(&v.raw_ref, &v.raw_alts)
+            .ok()?
+            .2
+            .into_iter()
+            .nth(index)
+    }
+}
+
+fn public_frequencies(v: &Variant, response: &Value) -> BTreeMap<String, BTreeMap<String, f64>> {
+    let mut frequencies = BTreeMap::new();
+    for p in response
+        .get("populations")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let Some(group) = text(p, "population")
+            .and_then(|p| p.strip_prefix("1000GENOMES:phase_3:"))
+            .filter(|group| ["ALL", "AFR", "AMR", "EAS", "EUR", "SAS"].contains(group))
+        else {
+            continue;
+        };
+        let Some(allele) = text(p, "allele").and_then(|a| panel_frequency_allele(v, a)) else {
+            continue;
+        };
+        let Some(frequency) = p
+            .get("frequency")
+            .and_then(Value::as_f64)
+            .filter(|f| f.is_finite() && (0.0..=1.0).contains(f))
+        else {
+            continue;
+        };
+        frequencies
+            .entry(group.to_string())
+            .or_insert_with(BTreeMap::new)
+            .insert(allele, frequency);
+    }
+    frequencies
 }
 pub fn normalize_alleles(
     reference: &str,
@@ -432,7 +518,6 @@ pub fn allele_context(v: &Variant, allele: &str) -> (Vec<u8>, usize) {
     );
     (seq, pos)
 }
-
 pub struct PanelBuilder<C: Rest> {
     pub client: C,
     pub drops: Vec<String>,
@@ -519,6 +604,23 @@ impl<C: Rest> PanelBuilder<C> {
         }
         if variants.is_empty() {
             bail!("no verified variants could be built");
+        }
+        // Population lookup is a builder-only batched POST. Scans never call
+        // Ensembl; absence from the result means no public frequency.
+        let ids: Vec<_> = variants
+            .iter()
+            .map(|v: &Variant| v.rsid.clone())
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        for chunk in ids.chunks(100) {
+            let response = self.client.post("variation/human?pops=1", chunk)?;
+            for v in variants.iter_mut().filter(|v| chunk.contains(&v.rsid)) {
+                v.frequencies = response
+                    .get(&v.rsid)
+                    .map(|record| public_frequencies(v, record))
+                    .unwrap_or_default();
+            }
         }
         let marker_regions = self.fetch_marker_regions();
         let mut panel = Panel {
@@ -830,27 +932,7 @@ impl<C: Rest> PanelBuilder<C> {
             alleles[1..].to_vec()
         };
         let (allele_offset, ref_allele, alts) = normalize_alleles(&reference, &anchored_alts)?;
-        let pops = self
-            .client
-            .json(&format!("variation/human/{}?pops=1", s.rsid))?;
-        let mut frequencies: BTreeMap<String, BTreeMap<String, f64>> = BTreeMap::new();
-        for p in pops
-            .get("populations")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-        {
-            let pop = text(p, "population").unwrap_or("");
-            let allele = text(p, "allele").unwrap_or("");
-            if let Some(group) = pop.strip_prefix("1000GENOMES:phase_3:")
-                && ["AFR", "AMR", "EAS", "EUR", "SAS"].contains(&group)
-            {
-                frequencies.entry(group.into()).or_default().insert(
-                    allele.into(),
-                    p.get("frequency").and_then(Value::as_f64).unwrap_or(0.0),
-                );
-            }
-        }
+        let frequencies = BTreeMap::new();
         if distance > 0 {
             eprintln!(
                 "{}: matched gene {} at distance {} bp",
