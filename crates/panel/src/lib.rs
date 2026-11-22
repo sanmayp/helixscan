@@ -50,11 +50,13 @@ pub struct Variant {
     pub flank_left: String,
     pub flank_right: String,
     pub phenotypes: Vec<Phenotype>,
-    /// Unique allele supported by the card's own increasing-risk findings.
+    /// Unique allele supported by GWAS evidence or an explicit curated row.
     #[serde(default)]
     pub effect_allele: Option<String>,
     #[serde(default)]
     pub effect_allele_status: EffectAlleleStatus,
+    #[serde(default)]
+    pub curated_effect: Option<CuratedEffect>,
     #[serde(default)]
     pub effect_findings: Vec<Phenotype>,
     pub clinical_significance: Vec<String>,
@@ -69,10 +71,57 @@ pub struct Haplotype {
     pub rs7412: String,
 }
 
+/// A small, versioned, manually reviewed override. It is embedded from
+/// `data/curated_effects.toml` and serialized into the panel and each genotype
+/// call so report provenance does not depend on another file being present.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CuratedEffect {
+    pub gene: String,
+    pub rsid: String,
+    pub effect_allele: String,
+    pub effect_direction: String,
+    pub plain_meaning: String,
+    pub source: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CuratedEffects {
+    pub version: u32,
+    #[serde(rename = "effects", default)]
+    pub rows: Vec<CuratedEffect>,
+}
+
+pub fn curated_effects() -> Result<Vec<CuratedEffect>> {
+    let table: CuratedEffects = toml::from_str(include_str!("../../../data/curated_effects.toml"))
+        .context("parse embedded data/curated_effects.toml")?;
+    if table.version != 1 {
+        bail!("unsupported curated-effect version {}", table.version);
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    for row in &table.rows {
+        if row.gene.is_empty()
+            || row.rsid.is_empty()
+            || row.effect_direction.is_empty()
+            || row.plain_meaning.is_empty()
+            || row.source.is_empty()
+        {
+            bail!("curated-effect rows must have all metadata fields");
+        }
+        if !seen.insert(row.rsid.clone()) {
+            bail!("duplicate curated effect for {}", row.rsid);
+        }
+        if !row.effect_allele.is_empty() && row.effect_allele.chars().count() > 64 {
+            bail!("curated effect allele is too long for {}", row.rsid);
+        }
+    }
+    Ok(table.rows)
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum EffectAlleleStatus {
     Supported,
+    Curated,
     #[default]
     Unclear,
 }
@@ -159,13 +208,66 @@ pub fn effect_audit(v: &Variant) -> EffectAudit {
     }
 }
 
+/// Rebuild GWAS-only results, then override only the exact curated rows.
+/// This function is intentionally total: an invalid table cannot silently
+/// select an allele or leave a stale override on a rebuilt panel.
 pub fn audit_panel(panel: &mut Panel) {
+    let all: std::collections::BTreeSet<_> =
+        panel.variants.iter().map(|v| v.rsid.clone()).collect();
+    // Builders and report subsets can legitimately omit part of the full
+    // panel. The CLI still audits the full panel strictly below.
+    let complete = curated_effects()
+        .expect("parse embedded curated effects")
+        .iter()
+        .all(|row| all.contains(&row.rsid));
+    audit_panel_inner(panel, complete).expect("invalid embedded curated effects");
+}
+
+pub fn audit_panel_checked(panel: &mut Panel) -> Result<()> {
+    audit_panel_inner(panel, true)
+}
+
+fn audit_panel_inner(panel: &mut Panel, require_all: bool) -> Result<()> {
+    let curated = curated_effects()?;
+    let mut table = curated
+        .into_iter()
+        .map(|row| (row.rsid.clone(), row))
+        .collect::<BTreeMap<_, _>>();
     for v in &mut panel.variants {
         let audit = effect_audit(v);
         v.effect_allele = audit.effect_allele;
         v.effect_allele_status = audit.status;
         v.effect_findings = audit.effect_findings;
+        v.curated_effect = None;
+        let matching = table.remove(&v.rsid);
+        if let Some(row) = matching {
+            if row.gene != v.gene {
+                bail!(
+                    "curated {} gene {} does not match panel gene {}",
+                    row.rsid,
+                    row.gene,
+                    v.gene
+                );
+            }
+            if row.effect_allele != v.ref_allele && !v.alts.contains(&row.effect_allele) {
+                bail!(
+                    "curated {} allele {:?} is not a panel REF/ALT allele",
+                    row.rsid,
+                    row.effect_allele
+                );
+            }
+            v.effect_allele = Some(row.effect_allele.clone());
+            v.effect_allele_status = EffectAlleleStatus::Curated;
+            v.curated_effect = Some(row);
+        }
     }
+    if require_all && !table.is_empty() {
+        bail!(
+            "curated rsIDs not found exactly once in panel: {}",
+            table.into_keys().collect::<Vec<_>>().join(", ")
+        );
+    }
+    Ok(())
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -787,6 +889,7 @@ impl<C: Rest> PanelBuilder<C> {
             effect_allele: None,
             effect_allele_status: EffectAlleleStatus::Unclear,
             effect_findings: vec![],
+            curated_effect: None,
             clinical_significance: sig,
             frequencies,
             fetched_at: now.into(),

@@ -1105,7 +1105,15 @@
         }
       ],
       "effect_allele": "T",
-      "effect_allele_status": "supported",
+      "effect_allele_status": "curated",
+      "curated_effect": {
+        "gene": "TCF7L2",
+        "rsid": "rs7903146",
+        "effect_allele": "T",
+        "effect_direction": "higher type 2 diabetes risk",
+        "plain_meaning": "T is the established TCF7L2 type 2 diabetes susceptibility allele; this common association is not deterministic.",
+        "source": "PMID:17463248 (Scott et al., Science 2007; rs7903146 T2D association)"
+      },
       "effect_findings": [
         {
           "trait_text": "Type 2 diabetes",
@@ -1364,6 +1372,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "benign",
@@ -1592,6 +1601,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "benign",
@@ -2072,6 +2082,7 @@
       ],
       "effect_allele": "C",
       "effect_allele_status": "supported",
+      "curated_effect": null,
       "effect_findings": [
         {
           "trait_text": "Type 2 diabetes",
@@ -2234,8 +2245,16 @@
           "beta_coefficient": null
         }
       ],
-      "effect_allele": null,
-      "effect_allele_status": "unclear",
+      "effect_allele": "A",
+      "effect_allele_status": "curated",
+      "curated_effect": {
+        "gene": "FTO",
+        "rsid": "rs9939609",
+        "effect_allele": "A",
+        "effect_direction": "higher type 2 diabetes risk mediated partly through BMI",
+        "plain_meaning": "A is the established FTO obesity- and BMI-associated allele; it is associated with type 2 diabetes partly through body weight.",
+        "source": "PMID:17434869 (Frayling et al., Science 2007)"
+      },
       "effect_findings": [],
       "clinical_significance": [],
       "frequencies": {
@@ -2355,6 +2374,7 @@
       ],
       "effect_allele": "C",
       "effect_allele_status": "supported",
+      "curated_effect": null,
       "effect_findings": [
         {
           "trait_text": "Type 2 diabetes",
@@ -2520,6 +2540,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "risk factor"
@@ -2702,6 +2723,7 @@
       ],
       "effect_allele": "C",
       "effect_allele_status": "supported",
+      "curated_effect": null,
       "effect_findings": [
         {
           "trait_text": "Type 2 diabetes",
@@ -2910,6 +2932,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "risk factor"
@@ -3387,6 +3410,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "benign"
@@ -3486,6 +3510,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "benign"
@@ -3605,6 +3630,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "likely pathogenic",
@@ -7178,6 +7204,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "benign",
@@ -8159,6 +8186,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "benign"
@@ -8321,6 +8349,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "benign"
@@ -9030,8 +9059,16 @@
           "beta_coefficient": "0.6266 unit decrease"
         }
       ],
-      "effect_allele": null,
-      "effect_allele_status": "unclear",
+      "effect_allele": "C",
+      "effect_allele_status": "curated",
+      "curated_effect": {
+        "gene": "APOE",
+        "rsid": "rs429358",
+        "effect_allele": "C",
+        "effect_direction": "APOE e4-defining allele, only with rs7412 C",
+        "plain_meaning": "C together with rs7412 C defines APOE e4, an established Alzheimer's susceptibility haplotype; neither SNP is interpreted alone as an APOE genotype.",
+        "source": "ClinVar VCV000017864 (isolated APOE c.388T>C/rs429358 C allele); PharmGKB APOE allele definitions"
+      },
       "effect_findings": [],
       "clinical_significance": [
         "uncertain significance",
@@ -9796,8 +9833,16 @@
           "beta_coefficient": "0.437176 unit decrease"
         }
       ],
-      "effect_allele": null,
-      "effect_allele_status": "unclear",
+      "effect_allele": "T",
+      "effect_allele_status": "curated",
+      "curated_effect": {
+        "gene": "APOE",
+        "rsid": "rs7412",
+        "effect_allele": "T",
+        "effect_direction": "APOE e2-defining allele, only with rs429358 T; not an e4 allele",
+        "plain_meaning": "T together with rs429358 T defines APOE e2. This allele does not define APOE e4; the two-site haplotype report is authoritative.",
+        "source": "ClinVar VCV000017848 (isolated APOE c.526C>T/rs7412 T allele); PMID:7920638 (Corder et al., Nature Genetics 1994, APOE e2)"
+      },
       "effect_findings": [],
       "clinical_significance": [
         "benign",
@@ -9942,6 +9987,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "uncertain significance",
@@ -10199,6 +10245,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "benign"
@@ -10381,6 +10428,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "likely pathogenic",
@@ -10488,6 +10536,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "likely pathogenic",
@@ -10548,8 +10597,16 @@
           "beta_coefficient": null
         }
       ],
-      "effect_allele": null,
-      "effect_allele_status": "unclear",
+      "effect_allele": "A",
+      "effect_allele_status": "curated",
+      "curated_effect": {
+        "gene": "HFE",
+        "rsid": "rs1800562",
+        "effect_allele": "A",
+        "effect_direction": "HFE-related hereditary hemochromatosis-associated C282Y variant",
+        "plain_meaning": "A encodes HFE C282Y. Clinical hemochromatosis has incomplete penetrance; genotype alone does not establish iron overload.",
+        "source": "ClinVar VCV000000009 (HFE c.845G>A, p.Cys282Tyr)"
+      },
       "effect_findings": [],
       "clinical_significance": [
         "uncertain significance",
@@ -10626,8 +10683,16 @@
           "beta_coefficient": null
         }
       ],
-      "effect_allele": null,
-      "effect_allele_status": "unclear",
+      "effect_allele": "G",
+      "effect_allele_status": "curated",
+      "curated_effect": {
+        "gene": "HFE",
+        "rsid": "rs1799945",
+        "effect_allele": "G",
+        "effect_direction": "HFE-related H63D variant; lower penetrance than C282Y, including in compound genotypes",
+        "plain_meaning": "G encodes HFE H63D. Its clinical significance depends on the other HFE allele and other findings; genotype alone is not iron overload.",
+        "source": "ClinVar VCV000000010 (HFE c.187C>G, p.His63Asp; record includes conflicting classifications)"
+      },
       "effect_findings": [],
       "clinical_significance": [
         "uncertain significance",
@@ -10885,8 +10950,16 @@
           "beta_coefficient": null
         }
       ],
-      "effect_allele": null,
-      "effect_allele_status": "unclear",
+      "effect_allele": "T",
+      "effect_allele_status": "curated",
+      "curated_effect": {
+        "gene": "F5",
+        "rsid": "rs6025",
+        "effect_allele": "T",
+        "effect_direction": "factor V Leiden-associated increased thrombosis risk",
+        "plain_meaning": "GRCh38 forward-strand T corresponds to F5 c.1601G>A (reverse-strand transcript; legacy c.1691G>A numbering), factor V Leiden. The other panel alternate, A, is not Leiden.",
+        "source": "ClinVar VCV000000642 (rs6025; F5 c.1601G>A, p.Arg534Gln); PMID:8164741 (Bertina et al., Nature 1994)"
+      },
       "effect_findings": [],
       "clinical_significance": [
         "uncertain significance",
@@ -11140,8 +11213,16 @@
           "beta_coefficient": null
         }
       ],
-      "effect_allele": null,
-      "effect_allele_status": "unclear",
+      "effect_allele": "A",
+      "effect_allele_status": "curated",
+      "curated_effect": {
+        "gene": "F2",
+        "rsid": "rs1799963",
+        "effect_allele": "A",
+        "effect_direction": "higher thrombosis risk",
+        "plain_meaning": "A is the F2 3-prime-UTR G20210A thrombosis-associated allele; carrying it does not mean a clot will occur.",
+        "source": "ClinVar VCV000013310 (F2 c.*97G>A, established risk allele/risk factor)"
+      },
       "effect_findings": [],
       "clinical_significance": [
         "likely pathogenic",
@@ -11244,6 +11325,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "uncertain significance",
@@ -11344,6 +11426,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "pathogenic",
@@ -11509,6 +11592,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "pathogenic",
@@ -11633,6 +11717,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "uncertain significance",
@@ -11740,6 +11825,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "not provided",
@@ -11946,6 +12032,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "uncertain significance",
@@ -12070,6 +12157,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "uncertain significance",
@@ -12136,6 +12224,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "not provided",
@@ -12244,6 +12333,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "uncertain significance",
@@ -12577,6 +12667,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "likely pathogenic",
@@ -12660,6 +12751,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "not provided",
@@ -12733,8 +12825,16 @@
           "beta_coefficient": null
         }
       ],
-      "effect_allele": null,
-      "effect_allele_status": "unclear",
+      "effect_allele": "",
+      "effect_allele_status": "curated",
+      "curated_effect": {
+        "gene": "CFTR",
+        "rsid": "rs113993960",
+        "effect_allele": "",
+        "effect_direction": "CFTR Phe508del pathogenic deletion",
+        "plain_meaning": "The normalized three-base deletion (empty effect allele) is CFTR F508del. Carrier status depends on the genotype; this is not a diagnosis of cystic fibrosis.",
+        "source": "ClinVar VCV000007105 (isolated CFTR c.1521_1523del, p.Phe508del, pathogenic, practice guideline)"
+      },
       "effect_findings": [],
       "clinical_significance": [
         "likely pathogenic",
@@ -12808,6 +12908,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "uncertain significance",
@@ -12950,6 +13051,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "uncertain significance",
@@ -13025,8 +13127,16 @@
           "beta_coefficient": null
         }
       ],
-      "effect_allele": null,
-      "effect_allele_status": "unclear",
+      "effect_allele": "A",
+      "effect_allele_status": "curated",
+      "curated_effect": {
+        "gene": "CYP2C19",
+        "rsid": "rs4244285",
+        "effect_allele": "A",
+        "effect_direction": "CYP2C19 *2 no-function allele",
+        "plain_meaning": "GRCh38 G>A is CYP2C19 c.681G>T on the reverse-strand transcript: *2, a no-function allele used with other alleles to infer metabolizer status.",
+        "source": "CPIC CYP2C19 allele functionality; PharmGKB rs4244285; ClinVar VCV001703261 (drug response)"
+      },
       "effect_findings": [],
       "clinical_significance": [
         "likely benign",
@@ -13099,8 +13209,16 @@
           "beta_coefficient": null
         }
       ],
-      "effect_allele": null,
-      "effect_allele_status": "unclear",
+      "effect_allele": "A",
+      "effect_allele_status": "curated",
+      "curated_effect": {
+        "gene": "CYP2C19",
+        "rsid": "rs4986893",
+        "effect_allele": "A",
+        "effect_direction": "CYP2C19 *3 no-function allele",
+        "plain_meaning": "A is CYP2C19 *3, a no-function allele; medication interpretation requires the full genotype, not this marker alone.",
+        "source": "CPIC CYP2C19 allele functionality; PharmGKB rs4986893; ClinVar VCV000016899 (drug response)"
+      },
       "effect_findings": [],
       "clinical_significance": [
         "benign",
@@ -13182,8 +13300,16 @@
           "beta_coefficient": null
         }
       ],
-      "effect_allele": null,
-      "effect_allele_status": "unclear",
+      "effect_allele": "T",
+      "effect_allele_status": "curated",
+      "curated_effect": {
+        "gene": "CYP2C19",
+        "rsid": "rs12248560",
+        "effect_allele": "T",
+        "effect_direction": "CYP2C19 *17 increased-function allele",
+        "plain_meaning": "T is the promoter variant defining CYP2C19 *17, an increased-function allele; metabolizer status depends on both haplotypes.",
+        "source": "CPIC CYP2C19 allele functionality; PharmGKB rs12248560 (CYP2C19 *17, c.-806C>T)"
+      },
       "effect_findings": [],
       "clinical_significance": [
         "benign",
@@ -13276,8 +13402,16 @@
           "beta_coefficient": null
         }
       ],
-      "effect_allele": null,
-      "effect_allele_status": "unclear",
+      "effect_allele": "T",
+      "effect_allele_status": "curated",
+      "curated_effect": {
+        "gene": "CYP2C9",
+        "rsid": "rs1799853",
+        "effect_allele": "T",
+        "effect_direction": "CYP2C9 *2 decreased-function allele",
+        "plain_meaning": "GRCh38 C>T corresponds to CYP2C9 c.430C>T, p.Arg144Cys (*2), a decreased-function allele.",
+        "source": "CPIC CYP2C9 allele functionality; PharmGKB rs1799853 and PharmVar CYP2C9*2"
+      },
       "effect_findings": [],
       "clinical_significance": [
         "likely benign",
@@ -13370,8 +13504,16 @@
           "beta_coefficient": null
         }
       ],
-      "effect_allele": null,
-      "effect_allele_status": "unclear",
+      "effect_allele": "C",
+      "effect_allele_status": "curated",
+      "curated_effect": {
+        "gene": "CYP2C9",
+        "rsid": "rs1057910",
+        "effect_allele": "C",
+        "effect_direction": "CYP2C9 *3 decreased-function allele",
+        "plain_meaning": "GRCh38 A>C corresponds to CYP2C9 c.1075A>C, p.Ile359Leu (*3), a decreased-function allele.",
+        "source": "CPIC CYP2C9 allele functionality; PharmGKB rs1057910 and PharmVar CYP2C9*3"
+      },
       "effect_findings": [],
       "clinical_significance": [
         "drug response",
@@ -13503,6 +13645,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "uncertain significance",
@@ -13797,8 +13940,16 @@
           "beta_coefficient": null
         }
       ],
-      "effect_allele": null,
-      "effect_allele_status": "unclear",
+      "effect_allele": "C",
+      "effect_allele_status": "curated",
+      "curated_effect": {
+        "gene": "SLCO1B1",
+        "rsid": "rs4149056",
+        "effect_allele": "C",
+        "effect_direction": "reduced transporter function; higher simvastatin-associated muscle side-effect risk",
+        "plain_meaning": "C is SLCO1B1 c.521T>C (Val174Ala), a decreased-function allele associated with simvastatin myopathy; effect size varies by genotype and medication.",
+        "source": "CPIC statin-associated muscle symptoms guideline (SLCO1B1 c.521T>C); PharmGKB rs4149056; ClinVar VCV000037346 (reviewed by expert panel)"
+      },
       "effect_findings": [],
       "clinical_significance": [
         "benign",
@@ -13906,6 +14057,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "likely pathogenic",
@@ -14001,6 +14153,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "likely benign",
@@ -14156,6 +14309,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "likely benign",
@@ -14245,8 +14399,16 @@
           "beta_coefficient": "1.742 unit decrease"
         }
       ],
-      "effect_allele": null,
-      "effect_allele_status": "unclear",
+      "effect_allele": "T",
+      "effect_allele_status": "curated",
+      "curated_effect": {
+        "gene": "CYP3A5",
+        "rsid": "rs776746",
+        "effect_allele": "T",
+        "effect_direction": "CYP3A5 *1 normal-function allele; C is the *3 decreased-function allele",
+        "plain_meaning": "GRCh38 T is CYP3A5 *1 (C on the reverse transcript is *3); *1 supports functional CYP3A5 expression. This is not a drug dose.",
+        "source": "CPIC tacrolimus guideline; PharmGKB rs776746 (CYP3A5 *3A/*1 alleles)"
+      },
       "effect_findings": [],
       "clinical_significance": [
         "benign",
@@ -14313,6 +14475,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "benign",
@@ -14406,8 +14569,16 @@
           "beta_coefficient": "0.244 unit decrease"
         }
       ],
-      "effect_allele": null,
-      "effect_allele_status": "unclear",
+      "effect_allele": "A",
+      "effect_allele_status": "curated",
+      "curated_effect": {
+        "gene": "MCM6",
+        "rsid": "rs4988235",
+        "effect_allele": "A",
+        "effect_direction": "lactase persistence",
+        "plain_meaning": "GRCh38 G>A is LCT regulatory -13910C>T; A/T respectively are associated with lactase persistence, not a disease risk.",
+        "source": "ClinVar VCV000007685 (LCT c.-13907C>T, lactase persistence); PMID:11788828 (Enattah et al., Nature Genetics 2002)"
+      },
       "effect_findings": [],
       "clinical_significance": [
         "association"
@@ -14603,8 +14774,16 @@
           "beta_coefficient": "1.81 unit decrease"
         }
       ],
-      "effect_allele": null,
-      "effect_allele_status": "unclear",
+      "effect_allele": "A",
+      "effect_allele_status": "curated",
+      "curated_effect": {
+        "gene": "ALDH2",
+        "rsid": "rs671",
+        "effect_allele": "A",
+        "effect_direction": "reduced ALDH2 function, alcohol flushing",
+        "plain_meaning": "A encodes ALDH2 E504K (historical E487K) and reduces enzyme activity, causing impaired acetaldehyde clearance and alcohol flushing.",
+        "source": "ClinVar VCV000018390 (ALDH2 c.1510G>A, p.Glu504Lys, reviewed by expert panel)"
+      },
       "effect_findings": [],
       "clinical_significance": [
         "uncertain significance",
@@ -15358,6 +15537,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "protective"
@@ -15413,6 +15593,7 @@
       "phenotypes": [],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "likely benign"
@@ -15658,6 +15839,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "association"
@@ -15968,6 +16150,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "uncertain significance",
@@ -16027,6 +16210,7 @@
       "phenotypes": [],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "benign"
@@ -16092,6 +16276,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "benign",
@@ -16294,6 +16479,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "benign",
@@ -16828,6 +17014,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "benign",
@@ -16958,6 +17145,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "benign",
@@ -17023,6 +17211,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "pathogenic",
@@ -17087,6 +17276,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "benign"
@@ -17138,6 +17328,7 @@
       "phenotypes": [],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "pathogenic"
@@ -17170,6 +17361,7 @@
       "phenotypes": [],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "pathogenic"
@@ -17204,6 +17396,7 @@
       "phenotypes": [],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "likely benign",
@@ -17237,6 +17430,7 @@
       "phenotypes": [],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "likely pathogenic"
@@ -17269,6 +17463,7 @@
       "phenotypes": [],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "pathogenic"
@@ -17301,6 +17496,7 @@
       "phenotypes": [],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "uncertain significance",
@@ -17354,6 +17550,7 @@
       "phenotypes": [],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "pathogenic"
@@ -17404,6 +17601,7 @@
       "phenotypes": [],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "pathogenic"
@@ -17464,6 +17662,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "likely pathogenic"
@@ -17510,6 +17709,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [
         "benign"
@@ -17573,6 +17773,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [],
       "frequencies": {
@@ -17638,6 +17839,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [],
       "frequencies": {
@@ -17699,6 +17901,7 @@
       ],
       "effect_allele": null,
       "effect_allele_status": "unclear",
+      "curated_effect": null,
       "effect_findings": [],
       "clinical_significance": [],
       "frequencies": {

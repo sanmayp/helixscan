@@ -59,10 +59,24 @@ pub fn report(
                 c.called && c.risk_allele.is_some() && c.dosage.is_some_and(|d| d > 0)
             });
             if let Some((v, c)) = risk {
-                message = format!(
-                    "The {} genotype at {} is associated with this trait in Ensembl evidence; common variants generally have small effects.",
-                    c.genotype, v.rsid
-                );
+                if c.effect_allele_status == helixscan_panel::EffectAlleleStatus::Curated {
+                    let row = c.curated_effect.as_ref().unwrap_or_else(|| {
+                        panic!("curated status without provenance at {}", c.rsid)
+                    });
+                    message = format!(
+                        "The {} genotype at {} contains {} effect-marker copy/copies: {}. Source: {}. This is not a diagnosis or probability.",
+                        c.genotype,
+                        v.rsid,
+                        c.dosage.unwrap_or(0),
+                        row.effect_direction,
+                        row.source
+                    );
+                } else {
+                    message = format!(
+                        "The {} genotype at {} is associated with this trait in Ensembl evidence; common variants generally have small effects.",
+                        c.genotype, v.rsid
+                    );
+                }
             }
         }
         let evidence = entries

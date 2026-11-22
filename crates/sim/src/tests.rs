@@ -32,6 +32,7 @@ fn panel() -> Panel {
             phenotypes: vec![],
             effect_allele: None,
             effect_allele_status: helixscan_panel::EffectAlleleStatus::Unclear,
+            curated_effect: None,
             effect_findings: vec![],
             clinical_significance: vec![],
             frequencies: Default::default(),

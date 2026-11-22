@@ -1,6 +1,8 @@
 use anyhow::{Result, bail};
 use clap::{Parser, Subcommand};
-use helixscan_panel::{Ensembl, PanelBuilder, audit_panel, effect_report::effect_report};
+use helixscan_panel::{
+    Ensembl, PanelBuilder, audit_panel_checked, effect_report::effect_report,
+};
 use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -40,7 +42,7 @@ fn main() -> Result<()> {
         Command::AuditEffects { panel, out, report } => {
             let mut panel: helixscan_panel::Panel =
                 serde_json::from_reader(fs::File::open(panel)?)?;
-            audit_panel(&mut panel);
+            audit_panel_checked(&mut panel)?;
             fs::write(&out, serde_json::to_string_pretty(&panel)? + "\n")?;
             fs::write(report, effect_report(&panel))?;
             println!("audited {} variants", panel.variants.len());

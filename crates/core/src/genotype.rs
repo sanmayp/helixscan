@@ -16,6 +16,8 @@ pub struct GenotypeCall {
     pub no_call_reason: Option<String>,
     pub heteroplasmy: Option<f64>,
     #[serde(default)]
+    pub curated_effect: Option<helixscan_panel::CuratedEffect>,
+    #[serde(default)]
     pub gene: String,
     #[serde(default)]
     pub trait_group: String,
@@ -62,7 +64,11 @@ pub fn call(v: &helixscan_panel::Variant, counts: &[u32; 4], sex: &str) -> Genot
         .collect::<Vec<_>>();
     let a = alts.iter().sum::<u32>();
     let d = r + a;
-    let risk = if v.effect_allele_status == helixscan_panel::EffectAlleleStatus::Supported {
+    let risk = if matches!(
+        v.effect_allele_status,
+        helixscan_panel::EffectAlleleStatus::Supported
+            | helixscan_panel::EffectAlleleStatus::Curated
+    ) {
         v.effect_allele.clone()
     } else {
         None
@@ -77,6 +83,7 @@ pub fn call(v: &helixscan_panel::Variant, counts: &[u32; 4], sex: &str) -> Genot
         alt_votes: alts.clone(),
         risk_allele: risk,
         effect_allele_status: v.effect_allele_status.clone(),
+        curated_effect: v.curated_effect.clone(),
         reference_allele: v.ref_allele.clone(),
         called: false,
         no_call_reason: Some("low coverage".into()),
@@ -168,7 +175,20 @@ pub fn call(v: &helixscan_panel::Variant, counts: &[u32; 4], sex: &str) -> Genot
             .risk_allele
             .as_ref()
             .map(|risk| u8::from(base.genotype.split('/').any(|allele| allele == risk)));
+    } else if v.effect_allele_status == helixscan_panel::EffectAlleleStatus::Curated {
+        // The genotype, not all remaining read votes, determines marker count.
+        // This matters for multiallelic sites and when a read overlaps another
+        // panel variant: a REF/other-ALT genotype has zero copies of this effect.
+        base.dosage = base.risk_allele.as_ref().map(|effect| {
+            base.genotype
+                .split('/')
+                .filter(|allele| allele == effect)
+                .count()
+                .try_into()
+                .unwrap_or(u8::MAX)
+        });
     } else {
+        // Retain the established GWAS dosage behavior outside H0c's scope.
         base.dosage = base.risk_allele.as_ref().map(|risk| dose(&base, risk, v));
     }
     base

@@ -809,6 +809,7 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
+ "toml",
  "ureq",
 ]
 

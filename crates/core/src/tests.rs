@@ -20,6 +20,7 @@ pub fn variant(rsid: &str, reference: &str, alt: &str) -> Variant {
         phenotypes: vec![],
         effect_allele: None,
         effect_allele_status: helixscan_panel::EffectAlleleStatus::Unclear,
+        curated_effect: None,
         effect_findings: vec![],
         clinical_significance: vec![],
         frequencies: Default::default(),
@@ -472,4 +473,105 @@ fn sensitive_reports_and_limitations_are_data_derived() {
     );
     assert!(report.limitations.iter().any(|x| x == "CYP2D6 type"));
     assert!(report.disclaimer.contains("Not a medical diagnosis"));
+}
+
+/// One genotype/dosage/JSON expectation for each embedded curated row.
+#[test]
+fn every_curated_row_produces_exact_marker_dosage_and_provenance() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let p: crate::Panel =
+        serde_json::from_reader(std::fs::File::open(root.join("data/panel.json")).unwrap())
+            .unwrap();
+    for row in helixscan_panel::curated_effects().unwrap() {
+        let v = p.variants.iter().find(|v| v.rsid == row.rsid).unwrap();
+        let allele = &v.curated_effect.as_ref().unwrap().effect_allele;
+        let mut counts = [0; 4];
+        if allele == &v.ref_allele {
+            counts[0] = 20;
+        } else {
+            counts[v.alts.iter().position(|a| a == allele).unwrap() + 1] = 20;
+        }
+        let call = crate::genotype::call(v, &counts, "XX");
+        assert_eq!(call.genotype, format!("{allele}/{allele}"), "{}", row.rsid);
+        assert_eq!(call.dosage, Some(2), "{}", row.rsid);
+        assert_eq!(call.risk_allele.as_deref(), Some(allele.as_str()));
+        assert_eq!(
+            call.effect_allele_status,
+            helixscan_panel::EffectAlleleStatus::Curated
+        );
+        let json = serde_json::to_value(&call).unwrap();
+        assert_eq!(json["effect_allele_status"], "curated");
+        assert_eq!(json["dosage"], 2);
+        assert_eq!(json["curated_effect"], serde_json::to_value(&row).unwrap());
+        let no_call = crate::genotype::call(v, &[0; 4], "XX");
+        assert!(!no_call.called && no_call.dosage.is_none());
+    }
+}
+
+#[test]
+fn curated_dosage_uses_the_called_allele_not_all_other_read_votes() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let p: crate::Panel =
+        serde_json::from_reader(std::fs::File::open(root.join("data/panel.json")).unwrap())
+            .unwrap();
+    let f5 = p.variants.iter().find(|v| v.rsid == "rs6025").unwrap();
+    assert_eq!(f5.ref_allele, "C");
+    assert_eq!(f5.alts, ["A", "T"]);
+    assert_eq!(f5.effect_allele.as_deref(), Some("T"));
+    let c = crate::genotype::call(f5, &[10, 10, 0, 0], "XX");
+    assert_eq!(c.genotype, "C/A");
+    assert_eq!(c.dosage, Some(0));
+    let c = crate::genotype::call(f5, &[0, 10, 10, 0], "XX");
+    assert_eq!(c.genotype, "A/T");
+    assert_eq!(c.dosage, Some(1));
+    assert_eq!(c.alt_votes, [10, 10]);
+    assert_eq!(c.depth, 20);
+
+    let cftr = p.variants.iter().find(|v| v.rsid == "rs113993960").unwrap();
+    let c = crate::genotype::call(cftr, &[10, 10, 0, 0], "XX");
+    assert_eq!(c.genotype, "CTT/");
+    assert_eq!(c.dosage, Some(1));
+    assert_eq!(c.risk_allele.as_deref(), Some(""));
+    let c = crate::genotype::call(cftr, &[20, 0, 0, 0], "XX");
+    assert_eq!(c.genotype, "CTT/CTT");
+    assert_eq!(c.dosage, Some(0));
+
+    let ref_effect = p.variants.iter().find(|v| v.rsid == "rs776746").unwrap();
+    assert_eq!(
+        ref_effect.effect_allele.as_deref(),
+        Some(ref_effect.ref_allele.as_str())
+    );
+    let c = crate::genotype::call(ref_effect, &[20, 0, 0, 0], "XX");
+    assert_eq!(c.genotype, "T/T");
+    assert_eq!(c.dosage, Some(2));
+    let c = crate::genotype::call(ref_effect, &[0, 20, 0, 0], "XX");
+    assert_eq!(c.genotype, "C/C");
+    assert_eq!(c.dosage, Some(0));
+}
+
+#[test]
+fn curated_health_summary_names_its_source_not_ensembl_gwas() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let mut p: crate::Panel =
+        serde_json::from_reader(std::fs::File::open(root.join("data/panel.json")).unwrap())
+            .unwrap();
+    p.variants.retain(|v| v.rsid == "rs7903146");
+    let call = crate::genotype::call(&p.variants[0], &[0, 0, 20, 0], "XX");
+    let r = crate::report::report(
+        &p,
+        vec![call],
+        crate::qc::Qc::default(),
+        "test".into(),
+        0.0,
+        Default::default(),
+    );
+    let message = &r
+        .traits
+        .iter()
+        .find(|t| t.trait_group == "Type 2 diabetes")
+        .unwrap()
+        .message;
+    assert!(message.contains("Source: PMID:17463248"));
+    assert!(message.contains("effect-marker copy/copies"));
+    assert!(!message.contains("in Ensembl evidence"));
 }
