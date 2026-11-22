@@ -71,6 +71,53 @@ H2 candidate validation: release core/GPU tests (**34 tests**, including whole-r
 
 All measurements use the repository's release build on the Rocky Linux 9.8 host: Intel Xeon W-2135 (6 cores / 12 threads, AVX-512), NVIDIA Quadro P5000 16 GiB, driver 580.196.07. No benchmark claims the 1.5 GB/s target has been met.
 
+## SPEED worker scaling, parser gain and gzip (2026-11-22)
+
+The host has six physical cores and twelve logical CPUs. These sequential `ca48199` scans use `demo-1gb.fastq` (1,273,289,704 bytes, 4,000,000 reads). All normalized biological JSON matches SHA-256 `6d1a625f9962a82c49fe73295452e0f58a44ac76773e423272630ae727a2c466`. Every run calls 77/77 variants; each called allele is present in its simulated truth allele set. This allele-containment check handles haploid `G` versus truth `G/G` and reversed allele order without changing the biological result. Full raw reports, logs and load records are in untracked `bench/r3/`.
+
+| Workers | Run | Scan s | Uncompressed GiB/s | Load at start | Load at end |
+| ---: | ---: | ---: | ---: | --- | --- |
+| 1 | 1 | 9.372805394 | 0.126544 | 0.75 0.94 1.50 1/935 456018 | 0.98 0.97 1.50 3/974 456032 |
+| 1 | 2 | 9.500617271 | 0.124840 | 0.98 0.97 1.50 3/974 456034 | 1.01 0.98 1.50 1/948 456046 |
+| 1 | 3 (contended) | 10.913590665 | 0.108685 | 1.01 0.98 1.50 1/948 456047 | 2.22 1.75 2.05 13/958 456061 |
+| 4 | 1 (contended) | 4.566703195 | 0.259671 | 2.22 1.75 2.05 13/958 456064 | 3.32 1.99 2.13 5/950 456213 |
+| 4 | 2 | 2.568206718 | 0.461739 | 3.32 1.99 2.13 5/950 456214 | 3.32 1.99 2.13 2/945 456221 |
+| 4 | 3 | 2.499966398 | 0.474343 | 3.32 1.99 2.13 2/945 456222 | 3.54 2.06 2.15 2/934 456247 |
+| 8 | 1 | 1.788100908 | 0.663185 | 3.54 2.06 2.15 2/934 456248 | 3.41 2.06 2.15 1/946 456281 |
+| 8 | 2 | 1.573864860 | 0.753459 | 3.41 2.06 2.15 1/946 456282 | 3.41 2.06 2.15 1/946 456297 |
+| 8 | 3 | 1.565732852 | 0.757372 | 3.41 2.06 2.15 1/946 456298 | 3.41 2.06 2.15 1/946 456315 |
+| 11 | 1 | 1.434355507 | 0.826873 | 3.41 2.06 2.15 1/946 456316 | 3.22 2.04 2.14 1/946 456335 |
+| 11 | 2 | 1.420828474 | 0.834614 | 3.22 2.04 2.14 1/946 456335 | 3.22 2.04 2.14 1/946 456355 |
+| 11 | 3 | 1.428142311 | 0.830339 | 3.22 2.04 2.14 1/946 456356 | 3.92 2.20 2.20 1/946 456374 |
+
+Quieter rows are approximately 9.5 s at one worker, 2.50 s at four, 1.57 s at eight and 1.42 s at eleven. Extra workers have diminishing returns after eight; serial FASTQ parsing/boundary discovery was the principal identified bottleneck. This shared-host matrix does not demonstrate I/O exhaustion or controlled cold/warm behavior. Contended runs are retained, not presented as software gains.
+
+### Single-pass FASTQ boundary and offset discovery
+
+The candidate discovers complete four-line boundaries and sequence/quality offsets together, instead of scanning each block twice. Eleven-worker sequential baseline/candidate pairs used the saved exact `ca48199` release executable, then the candidate. Every pair has byte-identical normalized biological JSON.
+
+| Run | Baseline scan s | Candidate scan s | Load before baseline | Load after candidate |
+| ---: | ---: | ---: | --- | --- |
+| 1 | 1.418409149 | 1.354756060 | 1.44 1.42 1.83 1/913 458145 | 2.12 1.56 1.88 1/912 458174 |
+| 2 | 1.414942864 | 1.363267533 | 2.12 1.56 1.88 1/912 458176 | 2.83 1.72 1.93 1/912 458205 |
+| 3 | 1.411356060 | 1.397246439 | 2.83 1.72 1.93 1/912 458207 | 3.25 1.82 1.96 2/927 458253 |
+
+Mean scan time decreased from 1.414902691 s to 1.371756678 s: **3.05% less scan time**. Baseline end/start loads were respectively `1.44 1.42 1.83 1/913 458159` / `2.12 1.56 1.88 1/912 458176`, `2.12 1.56 1.88 1/912 458190` / `2.83 1.72 1.93 1/912 458207`, and `2.83 1.72 1.93 1/912 458223` / `3.25 1.82 1.96 2/927 458224`. Candidate start loads were `1.44 1.42 1.83 1/913 458160`, `2.12 1.56 1.88 1/912 458191`, and `2.83 1.72 1.93 1/912 458224`; candidate end loads equal the next baseline start loads in the table. External candidate wall times were 2.105, 2.111 and 2.154 s; baseline wall times were 2.170, 2.162 and 2.156 s. These are paired sequential measurements, not isolated cache results. The standalone full-record parser is retained for non-block validation.
+
+### gzip input
+
+The gzip fixture is `bench/data/demo-1gb.fastq.gz`, generated with `gzip -1`, observed size 642 MiB, SHA-256 `bc945a6b790ef9e8002bf401da21a18edc33b8d84c50c0e07daa0a372921be3b`. The data-directory symlink belongs to `/home/genescan/helixscan`; its `.gitignore:11` rule `/bench/data/` ignores the fixture. The speed worktree reports `bench/r3/`, `bench/speed-r3.py` and `bench/data` as untracked, not ignored, so benchmark artifacts were not staged.
+
+| Run | Scan s | Uncompressed GiB/s | Load at start | Load at end |
+| ---: | ---: | ---: | --- | --- |
+| 1 | 4.289758190 | 0.276435 | 2.99 1.79 1.95 3/950 458664 | 3.15 1.84 1.96 4/1092 458905 |
+| 2 | 3.470594549 | 0.341683 | 3.15 1.84 1.96 4/1092 458907 | 3.30 1.90 1.98 2/1074 458937 |
+| 3 | 3.705236073 | 0.320045 | 3.30 1.90 1.98 3/1074 458939 | 3.35 1.93 1.99 1/1074 459022 |
+
+All gzip outputs match uncompressed biological output byte-for-byte. A separate GNU `gzip -cd ... > /dev/null` check took 8.40 s wall and 8.30 s user CPU on the idle host. The scanner's zlib-rs decode, parse and scan finishes faster, so zlib-rs is retained; single-thread decompression remains a clear bottleneck, not an extra worker-count gain. No I/O exhaustion or parallel decompression optimization is claimed.
+
+Validation: `cargo fmt --all -- --check`, `cargo test --workspace` (**48 tests**) and `cargo clippy --workspace --all-targets -- -D warnings` pass. The new gzip test compares offsets and batch bytes against uncompressed input at every chunk boundary for two records. Earlier timing-wrapper failures and test-only compilation errors were fixed; they are not scanner correctness failures. Final biological output equivalence includes only biological fields, excluding scan elapsed time and engine metadata.
+
 ## M7 measurement protocol and limitations
 
 The M7 implementation reuses canonical k-mer keys and worker marker buffers, traverses panel and marker keys together on CPU, and sends per-batch vote deltas to progress observers. Biological genotype, QC, telomere, marker and ancestry rules are unchanged.
