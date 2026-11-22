@@ -216,6 +216,20 @@ fn likelihood_prefers_heterozygote() {
     assert_eq!(c.genotype, "A/C");
     assert!(c.gq > 10);
 }
+
+#[test]
+fn multiallelic_calls_retain_both_alt_alleles() {
+    let mut v = variant("rs6420484", "A", "C");
+    v.alts = vec!["C".into(), "G".into(), "T".into()];
+    // REF A=0, ALT C=0, ALT G=20, ALT T=0. The old caller invented A/C.
+    let c = crate::genotype::call(&v, &[0, 0, 20, 0], "XX");
+    assert_eq!(c.genotype, "G/G");
+    assert_eq!(c.depth, 20);
+    // A genuine ALT/ALT genotype must not be represented as REF/ALT.
+    let c = crate::genotype::call(&v, &[0, 10, 10, 0], "XX");
+    assert_eq!(c.genotype, "C/G");
+    assert_eq!(c.depth, 20);
+}
 #[test]
 fn parses_fastq_with_at_quality() {
     let fastq = b"@r\nACGT\n+\n@!!!\n@r2\nACGT\n+\n!!!!\n";

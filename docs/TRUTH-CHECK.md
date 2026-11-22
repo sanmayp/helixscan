@@ -2,7 +2,7 @@
 
 ## Result
 
-**HelixScan: 74/75 evaluable, confident autosomal genotypes concordant (98.67%).** 1 genotype(s) are mismatches or no-calls. The independent CIGAR/base allele audit is concordant at 68/75 (90.67%).
+**HelixScan: 74/75 evaluable, confident autosomal genotypes concordant (98.67%).** 1 genotype(s) are mismatches or no-calls. The independent CIGAR/base allele audit is concordant at 75/75 (100.00%).
 
 All 77 sites were examined. chrX rs1050828 and chrMT rs267606617 are outside the GIAB GRCh38 v4.2.1 1–22 benchmark and are **reported as outside, never counted**. Of the 75 evaluable sites, 22 have a PASS record and 53 have no PASS record within the companion high-confidence BED; only the latter infer homozygous reference. Failed queries cannot become reference calls.
 
@@ -30,17 +30,19 @@ The bounded FASTQ contains 130764 primary, non-duplicate, MQ≥20 alignments. Th
 
 Scanner REF/ALT votes follow panel allele order. `other` is shown independently of supported REF/ALT alleles; ∅ denotes an empty allele. Low-depth no-calls are mismatches, not concordance.
 
+The multiallelic audit covers 43 evaluable markers with more than one ALT: 42/43 scanner-concordant. The production caller now scores every unordered diploid allele pair (including ALT/ALT), attributes nonselected alleles to sequencing error, and preserves panel order on exact ties. Previously it compared only REF and the largest ALT count; a G-only input for rs6420484's A/C/G/T alleles incorrectly selected zero-vote C. Regression tests cover both an ALT homozygote and a balanced ALT/ALT heterozygote. This does not create votes for reads whose flanks fail k-mer matching.
+
 | rsID | Locus | GIAB | Independent read calls and REF/ALT counts | Scanner | Scanner REF/ALT votes (REF / ALT1 / ALT2 / ALT3) | Result |
 |---|---|---|---|---|---|---|
 | rs7903146 | chr10:112998590+0 | T/T | T/T (DP 256, GQ 99) (T:256; other: none) | T/T (DP 257, GQ 99) | 0 / 0 / 257 | concordant |
-| rs5219 | chr11:17388025+0 | C/T | T/A (DP 217, GQ 99) (C:101; T:116; other: none) | T/C (DP 208, GQ 99) | 106 / 0 / 102 / 0 | concordant |
+| rs5219 | chr11:17388025+0 | C/T | T/C (DP 217, GQ 99) (C:101; T:116; other: none) | T/C (DP 208, GQ 99) | 106 / 0 / 102 / 0 | concordant |
 | rs1801282 | chr3:12351626+0 | C/C | C/C (DP 297, GQ 99) (C:296; T:1; other: none) | C/C (DP 289, GQ 99) | 288 / 0 / 1 | concordant |
 | rs13266634 | chr8:117172544+0 | C/C | C/C (DP 243, GQ 99) (C:243; other: none) | C/C (DP 229, GQ 99) | 229 / 0 / 0 | concordant |
 | rs9939609 | chr16:53786615+0 | A/A | A/A (DP 294, GQ 99) (A:294; other: none) | A/A (DP 277, GQ 99) | 0 / 277 | concordant |
-| rs7754840 | chr6:20661019+0 | C/G | G/A (DP 360, GQ 99) (A:2; C:182; G:176; other: none) | G/C (DP 354, GQ 99) | 168 / 2 / 184 / 0 | concordant |
+| rs7754840 | chr6:20661019+0 | C/G | G/C (DP 360, GQ 99) (A:2; C:182; G:176; other: none) | G/C (DP 354, GQ 99) | 168 / 2 / 184 / 0 | concordant |
 | rs4402960 | chr3:185793899+0 | G/G | G/G (DP 263, GQ 99) (G:261; T:2; other: none) | G/G (DP 235, GQ 99) | 234 / 0 / 1 | concordant |
-| rs1111875 | chr10:92703125+0 | C/T | C/G (DP 293, GQ 99) (C:148; T:145; other: none) | C/T (DP 287, GQ 99) | 144 / 0 / 143 | concordant |
-| rs1333049 | chr9:22125504+0 | C/G | G/A (DP 350, GQ 99) (C:177; G:173; other: none) | G/C (DP 348, GQ 99) | 168 / 0 / 180 | concordant |
+| rs1111875 | chr10:92703125+0 | C/T | C/T (DP 293, GQ 99) (C:148; T:145; other: none) | C/T (DP 287, GQ 99) | 144 / 0 / 143 | concordant |
+| rs1333049 | chr9:22125504+0 | C/G | G/C (DP 350, GQ 99) (C:177; G:173; other: none) | G/C (DP 348, GQ 99) | 168 / 0 / 180 | concordant |
 | rs10455872 | chr6:160589086+0 | A/A | A/A (DP 270, GQ 99) (A:270; other: none) | A/A (DP 259, GQ 99) | 259 / 0 | concordant |
 | rs3798220 | chr6:160540105+0 | T/T | T/T (DP 261, GQ 99) (T:261; other: none) | T/T (DP 249, GQ 99) | 249 / 0 | concordant |
 | rs5742904 | chr2:21006288+0 | C/C | C/C (DP 289, GQ 99) (A:1; C:288; other: none) | C/C (DP 279, GQ 99) | 279 / 0 / 0 | concordant |
@@ -74,10 +76,10 @@ Scanner REF/ALT votes follow panel allele order. `other` is shown independently 
 | rs4244285 | chr10:94781859+0 | A/G | G/A (DP 372, GQ 99) (A:175; G:196; T:1; other: none) | G/A (DP 365, GQ 99) | 191 / 174 / 0 / 0 | concordant |
 | rs4986893 | chr10:94780653+0 | G/G | G/G (DP 284, GQ 99) (G:284; other: none) | G/G (DP 275, GQ 99) | 275 / 0 | concordant |
 | rs12248560 | chr10:94761900+0 | C/C | C/C (DP 318, GQ 99) (A:1; C:317; other: none) | C/C (DP 300, GQ 99) | 299 / 1 / 0 | concordant |
-| rs1799853 | chr10:94942290+0 | C/T | C/A (DP 292, GQ 99) (C:141; T:151; other: none) | C/T (DP 282, GQ 99) | 133 / 0 / 149 | concordant |
+| rs1799853 | chr10:94942290+0 | C/T | C/T (DP 292, GQ 99) (C:141; T:151; other: none) | C/T (DP 282, GQ 99) | 133 / 0 / 149 | concordant |
 | rs1057910 | chr10:94981296+0 | A/A | A/A (DP 289, GQ 99) (A:289; other: none) | A/A (DP 278, GQ 99) | 278 / 0 / 0 | concordant |
-| rs9923231 | chr16:31096368+0 | C/T | C/A (DP 235, GQ 99) (A:1; C:118; G:1; T:115; other: none) | C/T (DP 221, GQ 99) | 106 / 0 / 1 / 114 | concordant |
-| rs4149056 | chr12:21178615+0 | C/T | T/A (DP 311, GQ 99) (C:147; T:164; other: G:1) | T/C (DP 307, GQ 99) | 159 / 0 / 148 | concordant |
+| rs9923231 | chr16:31096368+0 | C/T | C/T (DP 235, GQ 99) (A:1; C:118; G:1; T:115; other: none) | C/T (DP 221, GQ 99) | 106 / 0 / 1 / 114 | concordant |
+| rs4149056 | chr12:21178615+0 | C/T | T/C (DP 311, GQ 99) (C:147; T:164; other: G:1) | T/C (DP 307, GQ 99) | 159 / 0 / 148 | concordant |
 | rs3918290 | chr1:97450058+0 | C/C | C/C (DP 308, GQ 99) (C:308; other: none) | C/C (DP 293, GQ 99) | 293 / 0 / 0 / 0 | concordant |
 | rs1142345 | chr6:18130687+0 | T/T | T/T (DP 361, GQ 99) (T:361; other: none) | T/T (DP 350, GQ 99) | 350 / 0 / 0 / 0 | concordant |
 | rs116855232 | chr13:48045719+0 | C/C | C/C (DP 342, GQ 99) (C:342; other: none) | C/C (DP 334, GQ 99) | 334 / 0 | concordant |
@@ -117,6 +119,8 @@ Scanner REF/ALT votes follow panel allele order. `other` is shown independently 
 GIAB: **G/G**. HelixScan: **no call** (DP 0, GQ 0; REF/ALT votes 0 / 0 / 0 / 0). Independent read evidence: **G/G** (DP 260, GQ 99), REF/ALT counts **C:1; G:258; T:1**, other **none**, 260 spanning alignments, 260 allele-eligible reads.
 
 The independent counts show whether the disagreement comes from a caller rule or from reads failing to produce allele k-mer votes. This site is not silently counted as homozygous reference.
+
+**Diagnosis:** this is MIR6786/ARL16/CCDC137, not BRCA2; the panel's BRCA2 marker rs80359550 is concordant (T/T, 295 REF / 0 ALT votes). GRCh38 reference context matches the stored panel flanks, so this is not stale or incorrect panel sequence. HG001 also carries homozygous chr17:81645356 T>C and chr17:81645387 T>C, 15 bases either side of the target. Read sequence directly shows both changes. Because every allele-specific 31-mer spans at least one changed flank, all REF and ALT votes are absent before genotype calling. The corrected multiallelic caller therefore cannot recover this site. No-call is retained rather than substituting independent base counts or changing reference context using truth data; restoring such sites requires haplotype-aware or mismatch-tolerant read matching.
 
 ## Sites outside this truth dataset
 

@@ -391,7 +391,6 @@ fn read_gq(v: &Variant, counts: &BTreeMap<String, u32>, depth: u32) -> u8 {
     ];
     let max = logs.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let sum = logs.iter().map(|x| (x - max).exp()).sum::<f64>();
-    let max = logs.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
     (-10.0f64 * (1.0 - 1.0 / sum).max(1e-10).log10())
         .round()
         .clamp(0.0, 99.0) as u8
@@ -665,6 +664,16 @@ fn report(work: &Path, rows: &[SiteResult], total_reads: u64) -> Result<()> {
     out!(
         "Scanner REF/ALT votes follow panel allele order. `other` is shown independently of supported REF/ALT alleles; ∅ denotes an empty allele. Low-depth no-calls are mismatches, not concordance.\n"
     );
+    let multiallelic = rows
+        .iter()
+        .filter(|r| r.variant.alts.len() > 1)
+        .collect::<Vec<_>>();
+    let multi_matches = multiallelic.iter().filter(|r| r.scanner_match).count();
+    out!(
+        "The multiallelic audit covers {} evaluable markers with more than one ALT: {multi_matches}/{} scanner-concordant. The production caller now scores every unordered diploid allele pair (including ALT/ALT), attributes nonselected alleles to sequencing error, and preserves panel order on exact ties. Previously it compared only REF and the largest ALT count; a G-only input for rs6420484's A/C/G/T alleles incorrectly selected zero-vote C. Regression tests cover both an ALT homozygote and a balanced ALT/ALT heterozygote. This does not create votes for reads whose flanks fail k-mer matching.\n",
+        multiallelic.len(),
+        multiallelic.len()
+    );
     out!(
         "| rsID | Locus | GIAB | Independent read calls and REF/ALT counts | Scanner | Scanner REF/ALT votes (REF / ALT1 / ALT2 / ALT3) | Result |"
     );
@@ -733,6 +742,11 @@ fn report(work: &Path, rows: &[SiteResult], total_reads: u64) -> Result<()> {
         out!(
             "The independent counts show whether the disagreement comes from a caller rule or from reads failing to produce allele k-mer votes. This site is not silently counted as homozygous reference.\n"
         );
+        if r.variant.rsid == "rs6420484" {
+            out!(
+                "**Diagnosis:** this is MIR6786/ARL16/CCDC137, not BRCA2; the panel's BRCA2 marker rs80359550 is concordant (T/T, 295 REF / 0 ALT votes). GRCh38 reference context matches the stored panel flanks, so this is not stale or incorrect panel sequence. HG001 also carries homozygous chr17:81645356 T>C and chr17:81645387 T>C, 15 bases either side of the target. Read sequence directly shows both changes. Because every allele-specific 31-mer spans at least one changed flank, all REF and ALT votes are absent before genotype calling. The corrected multiallelic caller therefore cannot recover this site. No-call is retained rather than substituting independent base counts or changing reference context using truth data; restoring such sites requires haplotype-aware or mismatch-tolerant read matching.\n"
+            );
+        }
     }
     out!("## Sites outside this truth dataset\n");
     for r in rows.iter().filter(|r| !r.evaluable) {

@@ -104,25 +104,52 @@ pub fn call(v: &helixscan_panel::Variant, counts: &[u32; 4], sex: &str) -> Genot
     if d < 8 {
         return base;
     }
-    let best_alt = (0..alts.len()).max_by_key(|i| alts[*i]).unwrap_or(0);
-    let alt = &v.alts[best_alt];
-    let aa = alts[best_alt];
+    // A multiallelic genotype can contain two non-reference alleles. Rank
+    // every pair; considering only REF and the single most-voted ALT would
+    // erase a second observed ALT (and can invent a zero-vote ALT call).
     let e = 0.01f64;
-    let logs = [
-        r as f64 * (1.0 - e).ln() + aa as f64 * e.ln(),
-        -(d as f64) * 2f64.ln(),
-        r as f64 * e.ln() + aa as f64 * (1.0 - e).ln(),
-    ];
-    let best = (0..3).max_by(|x, y| logs[*x].total_cmp(&logs[*y])).unwrap();
-    let max = logs.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-    let sum = logs.iter().map(|x| (x - max).exp()).sum::<f64>();
-    let best_p = (logs[best] - max).exp() / sum;
+    let allele = |i: usize| {
+        if i == 0 {
+            &v.ref_allele
+        } else {
+            &v.alts[i - 1]
+        }
+    };
+    let mut logs = Vec::with_capacity((alts.len() + 1) * (alts.len() + 2) / 2);
+    for i in 0..=alts.len() {
+        for j in i..=alts.len() {
+            let selected = counts[i] + counts[j];
+            // All other alleles, including unobserved panel alleles, are
+            // sequencing-error observations under this diploid hypothesis.
+            let log = if i == j {
+                let n = counts[i];
+                (d - n) as f64 * e.ln() + n as f64 * (1.0 - e).ln()
+            } else {
+                selected as f64 * ((1.0 - e) / 2.0).ln() + (d - selected) as f64 * e.ln()
+            };
+            logs.push((log, i, j));
+        }
+    }
+    let mut best = &logs[0];
+    for hypothesis in &logs[1..] {
+        // Preserve allele order on exact likelihood ties rather than allowing
+        // a zero-vote ALT to replace an equally supported observed ALT.
+        if hypothesis.0.total_cmp(&best.0).is_gt() {
+            best = hypothesis;
+        }
+    }
+    let max = logs.iter().map(|x| x.0).fold(f64::NEG_INFINITY, f64::max);
+    let sum = logs.iter().map(|x| (x.0 - max).exp()).sum::<f64>();
+    let best_p = (best.0 - max).exp() / sum;
     base.gq = (-10f64 * (1.0 - best_p).max(1e-10).log10())
         .round()
         .clamp(0.0, 99.0) as u8;
     base.called = true;
     base.no_call_reason = None;
     if sex == "XY" && (v.chr == "X" || v.chr == "Y") {
+        let best_alt = (0..alts.len()).max_by_key(|i| alts[*i]).unwrap_or(0);
+        let alt = &v.alts[best_alt];
+        let aa = alts[best_alt];
         base.genotype = if r >= aa {
             v.ref_allele.clone()
         } else {
@@ -134,11 +161,7 @@ pub fn call(v: &helixscan_panel::Variant, counts: &[u32; 4], sex: &str) -> Genot
             (-10.0 * ((r.min(aa) as f64 + 0.5) / (d as f64 + 1.0)).log10()).clamp(0.0, 99.0) as u8
         };
     } else {
-        base.genotype = match best {
-            0 => format!("{0}/{0}", v.ref_allele),
-            1 => format!("{}/{}", v.ref_allele, alt),
-            _ => format!("{0}/{0}", alt),
-        };
+        base.genotype = format!("{}/{}", allele(best.1), allele(best.2));
     }
     if sex == "XY" && (v.chr == "X" || v.chr == "Y") {
         base.dosage = base
