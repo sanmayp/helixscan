@@ -11,3 +11,23 @@ html{scroll-behavior:smooth}.skip-link{position:absolute;left:10px;top:-60px;pad
 @keyframes fingerprint-drift{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*:before,*:after{animation:none!important;transition:none!important}.story-card:hover{transform:none}}
 .fingerprint-label time{display:block;font-size:6px;letter-spacing:.3px;color:#7aa0a9;margin-top:7px}.chapter-menu{display:none}
+
+/* Supplied art sits behind white chapter titles; contents remain outside it. */
+.cover-art{margin:0}.cover-art-image{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;opacity:.3;filter:brightness(.75)}
+#genome-fingerprint{z-index:1;opacity:.92;filter:drop-shadow(0 0 9px #011018)}
+.cover-art .fingerprint-label{z-index:2;background:#01141ddd;border-radius:50%;padding:12px}
+.chapter-banner{position:relative;width:100%;height:195px;margin:0 0 34px;overflow:hidden;border-radius:9px;border:1px solid #164754;background:#062431}
+.chapter-banner img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 47%;display:block;opacity:.88}
+.chapter-banner:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,#03131ff5, #041723b5 35%,#04172345 75%,#03131f90),linear-gradient(0deg,#03101be6,transparent);pointer-events:none}
+.chapter-banner .chapter-heading{position:absolute;inset:0;margin:0;padding:28px 30px;align-items:center;z-index:1}
+.chapter-banner .chapter-heading>div:last-of-type{max-width:calc(100% - 110px);text-shadow:0 1px 14px #00121a}
+.chapter-banner .chapter-heading h2{color:#f4fbfb}.chapter-banner .chapter-number{text-shadow:0 1px 15px #00121a}
+@media(max-width:700px){.cover-art-image{opacity:.22}.chapter-banner{height:166px;margin-bottom:25px;border-radius:6px}.chapter-banner .chapter-heading{padding:15px;align-items:flex-end}.chapter-banner .chapter-heading .eyebrow{display:none}.chapter-banner .chapter-heading h2{font-size:27px}.chapter-banner .chapter-heading p{font-size:10px;line-height:1.4;max-height:28px;overflow:hidden}.chapter-banner .chapter-number{font-size:27px;min-width:73px;padding-right:12px}}
+
+/* Personal findings lead the cover; technical details stay at the end. */
+.personal-highlights{list-style:none;padding:0;margin:16px 0 13px;max-width:440px;display:grid;gap:6px}
+.personal-highlights a{display:grid;grid-template-columns:26px minmax(0,1fr) 16px;align-items:center;gap:12px;padding:8px 10px;border:1px solid #15505e;background:linear-gradient(110deg,#082431df,#041722dc);border-radius:5px;text-decoration:none;transition:border-color .2s,background .2s}
+.personal-highlights a:hover{border-color:#18abb3;background:#093543}.personal-highlights svg{width:18px;height:18px;color:#00dfe3}.personal-highlights .highlight-arrow{width:14px;height:14px;color:#528795}.personal-highlights strong{font-size:11px;color:#e0f4f6;font-weight:550;line-height:1.25}.personal-highlights small{display:block;font-size:9px;line-height:1.5;color:#85b3bf;margin-top:2px}
+.cover-copy h1{margin-bottom:18px}.cover-copy>.eyebrow{margin-bottom:19px}.cover-intro{margin-bottom:18px}.cover-disclaimer{margin-top:12px;margin-bottom:12px}
+.about-reading{margin:45px 5%;border:1px solid #17414e;padding:27px 30px;border-radius:9px;background:#071923}.about-reading h2{font-size:27px;font-weight:450;margin-top:7px;margin-bottom:22px}.about-reading>dl{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;font-size:10px}.about-reading dt{font-size:8px;color:#7fabb7;margin-bottom:6px}.about-reading dd{margin:0;line-height:1.8;color:#c1d4da;overflow-wrap:anywhere}.about-reading .text-link{font-size:10px}.quality-dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:#41d39d;margin-right:7px}
+@media(max-width:700px){.personal-highlights{max-width:none;gap:5px;margin-top:11px}.personal-highlights a{padding:7px 9px}.personal-highlights strong{font-size:10px}.personal-highlights small{font-size:8px}.about-reading{padding:22px 18px;margin:28px 15px}.about-reading>dl{grid-template-columns:repeat(2,minmax(0,1fr))}}

@@ -1,129 +1,253 @@
-// Canvas rendering is intentional: it works offline, in headless browsers, and without WebGL.
+// The supplied artwork is primary; the canvas above it contains only live evidence.
+// A drawn helix is used solely when embedded video cannot be played.
 export async function createHelix(container) {
   const canvas = document.createElement('canvas');
+  canvas.className = 'helix-overlay';
   canvas.setAttribute('aria-hidden', 'true');
-  container.replaceChildren(canvas);
+  const media = document.createElement('div');
+  media.className = 'helix-media';
+  media.setAttribute('aria-hidden', 'true');
+  const poster = document.createElement('img');
+  poster.className = 'helix-art-poster';
+  poster.src = '/art/00-helix.webp';
+  poster.alt = '';
+  poster.decoding = 'async';
+  poster.addEventListener('error', () => { poster.hidden = true; useFallback(); });
+  media.append(poster);
+  const fallback = document.createElement('div');
+  fallback.className = 'helix-fallback';
+  fallback.hidden = true;
+  media.append(fallback);
+  container.replaceChildren(media, canvas);
   const ctx = canvas.getContext('2d');
-  if (!ctx) {
-    const fallback = document.createElement('div');
-    fallback.className = 'helix-fallback';
-    fallback.setAttribute('aria-hidden', 'true');
-    container.replaceChildren(fallback);
-    return {update() {}, setHits() {}, renderer: 'CSS fallback'};
-  }
-  let width = 1, height = 1, fraction = 0, hits = [], stopped = false, frame = 0;
-  let phase = .7;
+  const fallbackCanvas = document.createElement('canvas');
+  fallbackCanvas.className = 'helix-fallback-canvas';
+  fallbackCanvas.setAttribute('aria-hidden', 'true');
+  fallback.append(fallbackCanvas);
+  const fallbackCtx = fallbackCanvas.getContext('2d');
+  let width = 1, height = 1, fraction = 0, hits = [], stopped = false;
   const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
-  const defaults = ['TCF7L2', 'KCNJ11', 'PPARG', 'FTO', 'SLC30A8', 'APOE', 'HFE', 'F5', 'F2', 'LCT'];
-  const colors = ['#01eff1', '#f17fbd', '#74d3c2', '#a9a0f7'];
-  const project = (x, y, z, time) => {
-    const turn = motion.matches ? 0 : time * .000075;
-    // Several turns along the molecule make the 2D/WebGL fallback a helix,
-    // rather than the two straight rails produced by the old nearly-flat angle.
-    const a = phase + y * Math.PI * 5.2 + turn;
-    const depth = Math.cos(a);
-    const spread = Math.min(width * .225, height * .245, 160);
-    const perspective = .76 + (depth + 1) * .12;
-    return {x: width * .5 + Math.sin(a) * spread * perspective, y: height * .10 + y * height * .80, z: depth};
-  };
-  function draw(time = 0) {
-    if (stopped) return;
-    ctx.clearRect(0, 0, width, height);
-    const halo = ctx.createRadialGradient(width*.5,height*.5,10,width*.5,height*.5,Math.min(width,height)*.49);
-    halo.addColorStop(0,'rgba(0,117,142,.17)'); halo.addColorStop(.65,'rgba(0,68,89,.04)'); halo.addColorStop(1,'transparent');
-    ctx.fillStyle=halo;ctx.fillRect(0,0,width,height);
-    // Quiet orbital geometry makes the canvas feel like an instrument, not an illustration.
-    ctx.save();ctx.translate(width*.5,height*.5);ctx.strokeStyle='rgba(54,162,184,.085)';ctx.lineWidth=1;
-    for (const [rx,ry,rot] of [[.40,.37,-.32],[.33,.44,.4],[.44,.28,.13]]) {
-      ctx.beginPath();ctx.ellipse(0,0,width*rx,height*ry,rot,0,Math.PI*2);ctx.stroke();
-    }
-    ctx.setLineDash([3,9]);ctx.beginPath();ctx.moveTo(0,-height*.45);ctx.lineTo(0,height*.45);ctx.stroke();ctx.restore();
-    const count = 68;
-    const first=[],second=[];
-    for(let i=0;i<count;i++) {
-      const y=i/(count-1);
-      const a=project(0,y,0,time),b={...a,x:width-a.x,z:-a.z};
-      first.push(a);second.push(b);
-    }
-    // Back-to-front painting gives rungs perspective and keeps the
-    // rear strand visibly dimmer wherever the two sine strands cross.
-    const pieces=[];
-    for(let i=2;i<count-2;i+=3) {
-      const a=first[i],b=second[i],depth=(a.z+b.z)/2;
-      const trim=2+(depth+1)*1.5;
-      const dx=b.x-a.x,dy=b.y-a.y,length=Math.hypot(dx,dy)||1;
-      const ax=a.x+dx/length*trim,ay=a.y+dy/length*trim;
-      const bx=b.x-dx/length*trim,by=b.y-dy/length*trim;
-      const gradient=ctx.createLinearGradient(ax,ay,bx,by);
-      gradient.addColorStop(0,'rgba(0,222,239,.64)');gradient.addColorStop(.48,'rgba(106,171,194,.19)');gradient.addColorStop(1,'rgba(232,102,181,.56)');
-      pieces.push({z:Math.min(a.z,b.z)-.15,draw(){
-        ctx.globalAlpha=.22+(depth+1)*.25;ctx.strokeStyle=gradient;ctx.lineWidth=.7+(depth+1)*1.1;
-        ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(bx,by);ctx.stroke();ctx.globalAlpha=1;
-      }});
-    }
-    for(const [points,color] of [[first,'#01e3fa'],[second,'#ed79bd']]) {
-      for(let i=1;i<points.length;i++) {
-        const a=points[i-1],b=points[i],depth=(a.z+b.z)/2;
-        pieces.push({z:depth,draw(){
-          ctx.strokeStyle=color;ctx.globalAlpha=.23+(depth+1)*.34;ctx.lineWidth=1.1+(depth+1)*.8;
-          ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();ctx.globalAlpha=1;
-        }});
-      }
-      for(const p of points) {
-        pieces.push({z:p.z+.02,draw(){
-          const radius=1.8+(p.z+1)*2;
-          ctx.shadowColor=color;ctx.shadowBlur=3+(p.z+1)*3;ctx.globalAlpha=.35+(p.z+1)*.325;
-          const g=ctx.createRadialGradient(p.x-radius*.4,p.y-radius*.4,0,p.x,p.y,radius);
-          g.addColorStop(0,'#eaffff');g.addColorStop(.25,color);g.addColorStop(.75,color);g.addColorStop(1,'rgba(0,35,48,.85)');
-          ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,radius,0,Math.PI*2);ctx.fill();
-          ctx.shadowBlur=0;ctx.globalAlpha=1;
-        }});
-      }
-    }
-    pieces.sort((a,b)=>a.z-b.z).forEach(piece=>piece.draw());
-    // The scan ring follows input bytes, not wall-clock animation.
-    const scanY=height*(.10+fraction*.80);
-    ctx.save();ctx.shadowColor='#17fcfd';ctx.shadowBlur=20;
-    const ring=ctx.createLinearGradient(width*.25,0,width*.75,0);ring.addColorStop(0,'transparent');ring.addColorStop(.3,'#17fcfd');ring.addColorStop(.7,'#17fcfd');ring.addColorStop(1,'transparent');
-    ctx.strokeStyle=ring;ctx.lineWidth=1.6;ctx.beginPath();ctx.ellipse(width*.5,scanY,Math.min(width*.29,180),13,0,0,Math.PI*2);ctx.stroke();ctx.restore();
-    const genes = hits.length ? hits.slice(0,10).map(h=>({...h})) : defaults.map(gene=>({gene,alt_votes:0,idle:true}));
-    ctx.font='600 10px Inter, system-ui, sans-serif';ctx.textBaseline='middle';
-    const narrow=width<380;
-    const spread=Math.min(width*.225,height*.245,160);
-    genes.forEach((hit,i)=>{
-      const y=(i+.55)/genes.length;
-      const side=i%2===0?1:-1;
-      const p=project(0,y,0,0);p.x=width*.5+side*spread*.83;
-      const dotY=height*(.10+y*.80);
-      const w=ctx.measureText(hit.gene).width+18;
-      const x=side>0?Math.min(width-w-8,width*.65):Math.max(8,width*.35-w);
-      const lineEnd=side>0?x:x+w;
-      const c=hit.idle?'#3d6873':hit.alt_votes>0?'#fbac1b':'#01eff1';
-      ctx.strokeStyle=c;ctx.globalAlpha=hit.idle?.38:.72;ctx.lineWidth=.8;ctx.beginPath();ctx.moveTo(p.x,dotY);ctx.lineTo((p.x+lineEnd)/2,dotY);ctx.lineTo(lineEnd,dotY+(y*height<scanY?-1:1)*11);ctx.stroke();
-      ctx.fillStyle=c;ctx.globalAlpha=1;ctx.beginPath();ctx.arc(p.x,dotY,2.2,0,Math.PI*2);ctx.fill();
-      ctx.fillStyle=hit.idle?'rgba(2,19,27,.60)':'rgba(1,16,23,.90)';ctx.strokeStyle=c;ctx.lineWidth=.8;
-      ctx.beginPath();ctx.roundRect(x,dotY+(y*height<scanY?-24:-2),w,22,5);ctx.fill();ctx.globalAlpha=hit.idle?.40:.85;ctx.stroke();ctx.globalAlpha=1;
-      ctx.fillStyle=hit.idle?'#42656e':c;ctx.fillText(hit.gene,x+9,dotY+(y*height<scanY?-13:9));
-    });
-    ctx.font='8px ui-monospace, monospace';ctx.fillStyle='rgba(125,180,193,.5)';
-    ctx.fillText('5′',width*.5-spread-20,height*.075);ctx.fillText('3′',width*.5+spread+10,height*.075);
-    ctx.fillText('3′',width*.5-spread-20,height*.94);ctx.fillText('5′',width*.5+spread+10,height*.94);
-    if(!motion.matches) frame=requestAnimationFrame(draw);
+  const videos = [];
+  let active = 0, fadeFrame = 0, ready = false;
+
+  function useFallback() {
+    if (stopped || fallback.hidden === false) return;
+    fallback.hidden = false;
+    poster.hidden = true;
+    container.classList.add('helix-art-fallback');
+    for (const video of videos) video.pause();
+    cancelAnimationFrame(fadeFrame);
   }
-  const resize=()=>{
-    width=Math.max(container.clientWidth,1);height=Math.max(container.clientHeight,1);
-    const dpr=Math.min(window.devicePixelRatio||1,2);
-    canvas.width=Math.round(width*dpr);canvas.height=Math.round(height*dpr);
-    canvas.style.width=`${width}px`;canvas.style.height=`${height}px`;ctx.setTransform(dpr,0,0,dpr,0,0);draw(performance.now());
+  function resize() {
+    width = Math.max(container.clientWidth, 1);
+    height = Math.max(container.clientHeight, 1);
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    fallbackCanvas.width = Math.round(width * dpr);
+    fallbackCanvas.height = Math.round(height * dpr);
+    fallbackCtx?.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawFallback();
+    ctx?.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawOverlay();
+  }
+  function drawOverlay() {
+    if (!ctx || stopped) return;
+    ctx.clearRect(0, 0, width, height);
+    // This is a scan-position indicator, not wall-clock animation.
+    const scanY = height * (.10 + fraction * .80);
+    ctx.save();
+    ctx.shadowColor = '#17fcfd';
+    ctx.shadowBlur = 16;
+    const ring = ctx.createLinearGradient(width * .22, 0, width * .78, 0);
+    ring.addColorStop(0, 'transparent');
+    ring.addColorStop(.3, '#17fcfd');
+    ring.addColorStop(.7, '#17fcfd');
+    ring.addColorStop(1, 'transparent');
+    ctx.strokeStyle = ring;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.ellipse(width * .5, scanY, Math.min(width * .26, 150), 10, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+    const genes = hits.slice(0, 10);
+    if (!genes.length) return;
+    ctx.font = '600 10px Inter, system-ui, sans-serif';
+    ctx.textBaseline = 'middle';
+    const spread = Math.min(width * .225, height * .245, 160);
+    genes.forEach((hit, i) => {
+      const y = (i + .55) / genes.length;
+      const side = i % 2 === 0 ? 1 : -1;
+      const x0 = width * .5 + side * spread * .83;
+      const y0 = height * (.10 + y * .80);
+      const labelWidth = ctx.measureText(hit.gene).width + 18;
+      const x = side > 0 ? Math.min(width - labelWidth - 8, width * .65) : Math.max(8, width * .35 - labelWidth);
+      const lineEnd = side > 0 ? x : x + labelWidth;
+      const color = hit.alt_votes > 0 ? '#faac41' : '#01eff1';
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = .85;
+      ctx.lineWidth = .8;
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo((x0 + lineEnd) / 2, y0);
+      ctx.lineTo(lineEnd, y0 + (y0 < scanY ? -1 : 1) * 11);
+      ctx.stroke();
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x0, y0, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(1,16,23,.90)';
+      ctx.beginPath();
+      ctx.roundRect(x, y0 + (y0 < scanY ? -24 : -2), labelWidth, 22, 5);
+      ctx.fill();
+      ctx.globalAlpha = .85;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = color;
+      ctx.fillText(hit.gene, x + 9, y0 + (y0 < scanY ? -13 : 9));
+    });
+  }
+  function drawFallback() {
+    if (!fallbackCtx) return;
+    const c=fallbackCtx;
+    c.clearRect(0,0,width,height);
+    const top=height*.04,bottom=height*.96;
+    const points=110;
+    for(let strand=0;strand<2;strand++) {
+      const color=strand===0?'#01e3fa':'#ed79bd';
+      c.strokeStyle=color;c.lineWidth=2.5;c.shadowColor=color;c.shadowBlur=10;
+      c.beginPath();
+      for(let i=0;i<=points;i++) {
+        const y=top+(bottom-top)*i/points;
+        const x=width*.5+Math.sin(i/points*Math.PI*5+strand*Math.PI)*width*.14;
+        i?c.lineTo(x,y):c.moveTo(x,y);
+      }
+      c.stroke();
+    }
+    c.shadowBlur=0;
+    for(let i=0;i<20;i++) {
+      const y=top+(bottom-top)*(i+.5)/20;
+      const phase=(i+.5)/20*Math.PI*5;
+      const x1=width*.5+Math.sin(phase)*width*.14;
+      const x2=width*.5-Math.sin(phase)*width*.14;
+      c.strokeStyle=i%2?'#17fcfd':'#bb7dcc';c.lineWidth=.8;
+      c.beginPath();c.moveTo(x1,y);c.lineTo(x2,y);c.stroke();
+      c.fillStyle=i%2?'#01eff1':'#ed79bd';
+      c.beginPath();c.arc(x1,y,2,0,Math.PI*2);c.fill();
+      c.beginPath();c.arc(x2,y,2,0,Math.PI*2);c.fill();
+    }
+  }
+  function makeVideo(index) {
+    const video = document.createElement('video');
+    video.className = 'helix-art-video';
+    video.dataset.layer = String(index);
+    video.muted = true;
+    video.defaultMuted = true;
+    video.playsInline = true;
+    video.preload = 'auto';
+    video.loop = false;
+    video.setAttribute('aria-hidden', 'true');
+    video.src = '/art/09-helix-loop.mp4';
+    video.addEventListener('error', useFallback);
+    media.append(video);
+    videos.push(video);
+    return video;
+  }
+  async function crossfade(duration) {
+    const outgoing = videos[active], incoming = videos[1 - active];
+    if (stopped || !Number.isFinite(duration) || duration < 1.6) { useFallback(); return; }
+    const fadeSeconds = Math.min(.6, duration / 4);
+    const startAt = Math.max(0, duration - fadeSeconds);
+    let fading = false;
+    const tick = async () => {
+      if (stopped || !ready) return;
+      if (!fading && outgoing.currentTime >= startAt) {
+        fading = true;
+        try { incoming.currentTime = 0; await incoming.play(); }
+        catch { useFallback(); return; }
+      }
+      if (fading) {
+        // If playback pauses at the last frame, use elapsed time as a second clock.
+        if (!fadeStartedAt) fadeStartedAt = performance.now();
+        const opacity = Math.min(1, Math.max(
+          (outgoing.currentTime - startAt) / fadeSeconds,
+          (performance.now() - fadeStartedAt) / (fadeSeconds * 1000),
+        ));
+        outgoing.style.opacity = String((1 - opacity) * .70);
+        incoming.style.opacity = String(opacity * .70);
+        if (opacity >= 1) {
+          outgoing.pause();
+          outgoing.style.opacity = '';
+          outgoing.classList.remove('is-active');
+          incoming.style.opacity = '';
+          incoming.classList.add('is-active');
+          active = 1 - active;
+          fadeStartedAt = 0;
+          fadeFrame = requestAnimationFrame(() => crossfade(videos[active].duration));
+          return;
+        }
+      } else { fadeStartedAt = 0; }
+      fadeFrame = requestAnimationFrame(tick);
+    };
+    let fadeStartedAt = 0;
+    fadeFrame = requestAnimationFrame(tick);
+  }
+  async function startVideo() {
+    if (motion.matches || !ctx) {
+      if (motion.matches) motionFreeze();
+      if (!ctx) useFallback();
+      return { renderer: motion.matches ? 'embedded WebP poster + 2D overlay' : 'CSS fallback' };
+    }
+    const first = makeVideo(0), second = makeVideo(1);
+    const canPlay = new Promise(resolve => {
+      if (first.readyState >= 3) { resolve(true); return; }
+      first.addEventListener('canplay', () => resolve(true), { once: true });
+      first.addEventListener('error', () => resolve(false), { once: true });
+    });
+    const loaded = await Promise.race([
+      canPlay,
+      new Promise(resolve => setTimeout(() => resolve(first.readyState >= 3), 8000)),
+    ]);
+    if (stopped) return { renderer: 'disposed' };
+    if (!loaded || !Number.isFinite(first.duration) || first.duration < 1.6) {
+      useFallback();
+      return { renderer: 'CSS fallback' };
+    }
+    try {
+      await first.play();
+    } catch {
+      useFallback();
+      return { renderer: 'CSS fallback' };
+    }
+    ready = true;
+    first.classList.add('is-active');
+    container.classList.add('helix-art-ready');
+    poster.style.animation = 'none';
+    second.load();
+    // Two independently buffered videos overlap across the source clip seam.
+    crossfade(first.duration);
+    return { renderer: 'embedded MP4 + transparent live-evidence canvas' };
+  }
+  const observer = new ResizeObserver(resize);
+  observer.observe(container);
+  resize();
+  const motionFreeze = () => { for (const video of videos) video.pause(); cancelAnimationFrame(fadeFrame); };
+  const renderer = await startVideo();
+  motion.addEventListener('change', () => { if (motion.matches) motionFreeze(); });
+  const dispose = () => {
+    stopped = true;
+    cancelAnimationFrame(fadeFrame);
+    observer.disconnect();
+    for (const video of videos) video.pause();
   };
-  const observer = new ResizeObserver(resize);observer.observe(container);resize();
-  const dispose=()=>{stopped=true;cancelAnimationFrame(frame);observer.disconnect();};
-  window.disposeHelix=dispose;
+  window.disposeHelix = dispose;
   return {
-    renderer: '2D canvas',
-    update(value) {fraction=Math.min(Math.max(Number(value)||0,0),1);if(motion.matches)draw(0);},
-    setHits(value) {hits=Array.isArray(value)?value:[];if(motion.matches)draw(0);},
+    renderer,
+    update(value) { fraction = Math.min(Math.max(Number(value) || 0, 0), 1); drawOverlay(); },
+    setHits(value) { hits = Array.isArray(value) ? value : []; drawOverlay(); },
     setHit() {},
   };
 }
-export function disposeHelix() {if(window.disposeHelix)window.disposeHelix();}
+export function disposeHelix() { if (window.disposeHelix) window.disposeHelix(); }
