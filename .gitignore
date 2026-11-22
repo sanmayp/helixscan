@@ -1,7 +1,12 @@
 /target/
+/.panel-cache/
 *.fastq
 *.fastq.gz
 /testdata/
+/!testdata/
+/testdata/*
+!/testdata/small.fastq
+!/testdata/small.truth.json
 /bench/data/
 *.log
 !data/panel.drop.log
