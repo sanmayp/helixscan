@@ -92,6 +92,16 @@ impl MarkerIndex {
     fn lookup(&self) -> &MarkerLookup {
         self.dense.get_or_init(|| MarkerLookup::new(self))
     }
+    /// CPU-only fused traversal: reject panel and marker negatives with one
+    /// bitmap read. Exact full-key lookups still establish every match.
+    pub fn combined_prefilter(&self, panel: &crate::PanelIndex) -> Vec<u64> {
+        let mut filter = panel.bitmap.clone();
+        for key in self.y.iter().chain(&self.control).chain(&self.x) {
+            let hash = crate::index::hash(*key);
+            filter[(hash >> 6) as usize] |= 1 << (hash & 63);
+        }
+        filter
+    }
 }
 
 /// A compact hash-derived rejection bitmap precedes exact full-key probing.
@@ -174,13 +184,44 @@ pub fn observe_marker_key(
 pub struct MarkerScanner {
     pub index: Arc<MarkerIndex>,
     encoder: crate::encode::KmerEncoder,
+    combined: Option<Vec<u64>>,
 }
 impl MarkerScanner {
     pub fn new(index: Arc<MarkerIndex>, level: SimdLevel) -> Self {
         Self {
             index,
             encoder: crate::encode::KmerEncoder::new(level),
+            combined: None,
         }
+    }
+    pub fn with_panel(
+        index: Arc<MarkerIndex>,
+        level: SimdLevel,
+        panel: &crate::PanelIndex,
+    ) -> Self {
+        let combined = index.combined_prefilter(panel);
+        Self {
+            index,
+            encoder: crate::encode::KmerEncoder::new(level),
+            combined: Some(combined),
+        }
+    }
+    #[inline]
+    pub fn maybe_observe<'a>(
+        &self,
+        key: crate::encode::KmerKey,
+        panel: &'a crate::PanelIndex,
+        y: &mut bool,
+        control: &mut bool,
+    ) -> Option<&'a [crate::index::Hit]> {
+        if let Some(filter) = &self.combined {
+            let hash = crate::index::hash(key.canonical);
+            if filter[(hash >> 6) as usize] & (1 << (hash & 63)) == 0 {
+                return None;
+            }
+        }
+        self.observe(key, y, control);
+        panel.lookup_ref(key.canonical)
     }
     /// Check each marker at most once per read, even when several k-mers match.
     pub fn add_keys(&mut self, seq: &[u8], local: &mut MarkerLocal) {

@@ -18,7 +18,38 @@ All runs call 77/77 truth variants, report 100% panel coverage, and retain byte-
 | Exact first-gain candidate | 2 | 4.272545412 | 5.020 | 0.277550 | 3.92 4.62 3.14 3/914 368071 | 4.00 4.63 3.15 1/914 368078 |
 | Exact first-gain candidate | 3 | 4.336093543 | 5.080 | 0.273482 | 4.00 4.63 3.15 2/914 368082 | 4.00 4.62 3.16 2/916 368091 |
 
-The exact first-gain candidate contains the reader/gzip fixes, an exact marker prefix/filter table, rolling telomere detection and SIMD FASTQ newline search. All three final runs are about 2.8 times the best baseline rate; the reader-only rows were not an independent gain. The consolidated FASTQ parser attempt was reverted to its tested tail-preserving boundary finder after its regression, with SIMD newline search used in both newline loops. This table describes the exact candidate selected for the first gain commit.
+The exact first-gain candidate contains the reader/gzip fixes, an exact marker prefix/filter table, rolling telomere detection and SIMD FASTQ newline search. All three final runs are about 2.8 times the best baseline rate; the reader-only rows were not an independent gain. The consolidated FASTQ parser attempt was reverted to its tested tail-preserving boundary finder after its regression, with SIMD newline search used in both newline loops. This table describes the exact candidate selected for the first gain commit (`dbf073d`).
+
+### Marker rejection bitmap (`07b5d63`)
+
+The marker filter now uses 2^21 hash-derived bits (256 KiB), instead of a 16 MiB byte-per-prefix table. Exact full-key probing still resolves every positive. The original 21-bit prefix of each key is deliberately preserved in the filter bit selection, even though the exact-table slot uses the wider mixed hash; a focused collision test confirms that different keys sharing a filter bit retain their exact marker semantics.
+
+| Stage | Run | Scan s | Wall s | GiB/s | Load at start | Load at end |
+| --- | ---: | ---: | ---: | ---: | --- | --- |
+| Marker bitmap `07b5d63` | 1 | 2.607223924 | 3.360 | 0.454830 | 5.56 3.44 2.40 2/900 403387 | 5.27 3.42 2.39 2/900 403395 |
+| Marker bitmap `07b5d63` | 2 | 2.561744960 | 3.320 | 0.462905 | 5.27 3.42 2.39 2/900 403398 | 5.25 3.45 2.41 2/899 403408 |
+| Marker bitmap `07b5d63` | 3 | 2.571521482 | 3.330 | 0.461145 | 5.25 3.45 2.41 2/899 403411 | 5.25 3.45 2.41 2/899 403419 |
+
+Each run called 77/77 variants with 100% truth agreement and produced the canonical biological SHA-256 above. Validation included all nine GPU tests serially, all 47 workspace tests serially, a subsequent ordinary default-thread `cargo test --workspace`, and strict workspace Clippy. One earlier parallel debug GPU test process exited with SIGSEGV; its cause was not established. The isolated serial GPU run, serial workspace run and later ordinary workspace run all passed, so the SIGSEGV is not presented as a resolved defect or as evidence of a scanner failure.
+
+### Fused CPU panel/marker rejection (next gain)
+
+A worker-local combined 256 KiB bitmap starts as a copy of the panel filter and adds the marker filter bits. One lookup rejects the common negative case for both indexes. Positive cases still run the original exact marker lookup and panel full-key probing, including the X-homolog veto. Standalone `MarkerScanner::new`, `read_hits_with` and GPU uploads retain their previous behavior. This changes only CPU fused traversal, not evidence or voting rules.
+
+Three sequential baseline/candidate pairs used the same four-worker AVX-512 fixture and command. Baseline was the saved `07b5d63` release binary; candidate was the fused-filter release. The candidate preceded no baseline and all baselines preceded their candidate in each pair, so these are sequential paired measurements rather than randomized or isolated-cache claims.
+
+| Pair | Binary | Scan s | Wall s | GiB/s | Load at start | Load at end |
+| ---: | --- | ---: | ---: | ---: | --- | --- |
+| 1 | `07b5d63` | 2.588863876 | 3.330 | 0.458056 | 5.73 3.82 2.80 3/931 438344 | 5.73 3.82 2.80 1/931 438352 |
+| 1 | Fused filter | 2.294094529 | 3.040 | 0.516911 | 5.73 3.82 2.80 1/931 438355 | 5.59 3.83 2.81 1/930 438397 |
+| 2 | `07b5d63` | 2.571284578 | 3.310 | 0.461187 | 5.59 3.83 2.81 1/930 438400 | 5.22 3.78 2.80 1/930 438408 |
+| 2 | Fused filter | 2.334240015 | 3.070 | 0.508021 | 5.22 3.78 2.80 1/930 438411 | 5.22 3.78 2.80 1/930 438419 |
+| 3 | `07b5d63` | 2.556325014 | 3.300 | 0.463886 | 5.22 3.78 2.80 1/930 438422 | 5.12 3.78 2.80 1/930 438430 |
+| 3 | Fused filter | 2.326372840 | 3.060 | 0.509739 | 5.12 3.78 2.80 1/930 438433 | 5.12 3.78 2.80 1/930 438441 |
+
+Per-pair scan-time reductions are **11.386%, 9.219%, and 8.995%** (9.872% comparing mean scan time: 2.572158 to 2.318236 s). All six runs called 77/77 variants, reported 100% truth agreement, and produced byte-identical normalized biological JSON. The earlier unpaired candidate runs were 2.496468910, 2.577705445 and 2.422763059 s under one-minute load averages 5.65–5.68; the paired runs above are the retention evidence.
+
+The focused post-marker-bitmap Callgrind profile (`callgrind-marker-gain.out`, `profile-marker-gain.txt`) ran the real-panel small fixture serially and recorded 449,213,799 Ir. It still showed per-read `RandomState` hashing at 56,587,258 Ir (12.60%) and `scan_read_with_markers` closure cost at 45,400,134 Ir (10.11%). This is instruction cost rather than a direct prediction of wall time. Reusable vote scratch, dense panel entries, packed marker entries, direct marker hash arithmetic, and reuse of the fused hash in both exact tables were measured and reverted because they were slower or showed no independent gain. A smaller panel bitmap broke GPU parity and was also reverted; GPU hash/index compatibility was not changed.
 
 Required I/O changes: gzip input uses `flate2::bufread::MultiGzDecoder` over a 1 MiB `BufReader`; core and GPU paths pass the already-open file to it; reads target reserved spare capacity rather than a repeatedly zero-filled vector. FASTQ record boundaries, truncation checks and `@` quality handling remain covered.
 

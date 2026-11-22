@@ -132,7 +132,7 @@ pub fn scan_path_with_context(
                 let mut c = vec![[0u32; 4]; index.variants.len()];
                 let mut q = QcLocal::default();
                 let mut m = MarkerLocal::default();
-                let mut marker_scanner = MarkerScanner::new(markers_index, level);
+                let mut marker_scanner = MarkerScanner::with_panel(markers_index, level, &index);
                 let mut encoder = crate::encode::KmerEncoder::new(level);
                 let mut hits = Vec::new();
                 let mut previous = vec![[0u32; 4]; index.variants.len()];
