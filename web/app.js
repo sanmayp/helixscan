@@ -7,33 +7,31 @@ const number = new Intl.NumberFormat(undefined, {maximumFractionDigits: 0});
 const compact = new Intl.NumberFormat(undefined, {notation: 'compact', maximumFractionDigits: 1});
 const RECENT_KEY = 'helixscan.recent.v1';
 const CHAPTER_ART = {ancestry:'01-ancestry.webp',body:'02-body.webp',health:'03-heart.webp',medicines:'04-medicines.webp',clock:'05-telomere.webp',care:'06-carrier.webp',limits:'07-limits.webp'};
-// Only clear, returned interpretations belong in the personal opening.
+// Only clear, returned genotype calls belong in the personal opening.
 function personalHighlights(r) {
   const everyday = [
-    ['Eye colour (blue/brown)', 'eye', 'Your eye-colour markers', 'See the genotype evidence behind this trait.'],
-    ['Lactose tolerance', 'leaf', 'Your lactose markers', 'See what this panel observed about lactose digestion.'],
-    ['Caffeine metabolism', 'coffee', 'Your caffeine markers', 'See the evidence related to caffeine metabolism.'],
-    ['Earwax type', 'spark', 'Your earwax-type markers', 'See the genotype evidence behind this everyday trait.'],
-    ['Alcohol metabolism', 'leaf', 'Your alcohol-response markers', 'See the observed markers, not a prediction or diagnosis.'],
-    ['Alcohol flush', 'leaf', 'Your alcohol-response markers', 'See the observed markers, not a prediction or diagnosis.'],
-    ['Red hair / freckles', 'spark', 'Your hair and freckling markers', 'See the observed markers behind this trait.'],
-    ['Sprint vs endurance', 'heart', 'Your muscle-response markers', 'See the evidence behind this research association.'],
+    ['Eye colour (blue/brown)', 'eye', 'Your eye-colour marker', v=>({'C/C':'Two copies of the blue-eye-associated allele: C/C here, complementary to G/G in the returned findings. Eye colour is influenced by many genes.','C/T':'One copy of the blue-eye-associated allele: C/T here, complementary to G/A in the returned findings. Eye colour is influenced by many genes.','T/T':'No copies of that blue-eye-associated allele: T/T here, complementary to A/A in the returned findings. Eye colour is influenced by many genes.'})[genotype(v)]||null, '#chapter-body'],
+    ['Lactose tolerance', 'leaf', 'Your lactose-digestion marker', v=>({'G/G':'No copies of the lactase-persistence-associated A allele at MCM6 rs4988235. This is one marker, not a lactose-intolerance diagnosis.','G/A':'One copy of the lactase-persistence-associated A allele at MCM6 rs4988235; this does not determine whether you digest lactose comfortably.','A/A':'Two copies of the lactase-persistence-associated A allele at MCM6 rs4988235; this does not determine whether you digest lactose comfortably.'})[genotype(v)]||null, '#chapter-body'],
   ];
   const result=[];
-  for(const [name,icon,title,text] of everyday) {
+  for(const [name,icon,title,copy,href] of everyday) {
     const t=r.traits.find(t=>t.section==='trait'&&t.trait_group===name);
     if(!t)continue;
     const observed=r.variants.filter(v=>v.trait_group===name&&v.called);
-    // A missing genotype or explicitly unclear interpretation stays off the cover.
-    if(observed.length&&(!t.message||t.message.includes('Observed')))result.push({icon,title,text,href:'#chapter-body'});
+    if(!observed.length||!observed.every(v=>v.genotype))continue;
+    const key=observed.find(v=>t.rsids.includes(v.rsid))||observed[0];
+    const text=copy(key);
+    // An unavailable interpretation or genotype stays off the cover.
+    if(!text||/^See the observed/.test(text))continue;
+    result.push({icon,title,text,href});
     if(result.length===3)break;
   }
   for(const p of r.pgx||[]) {
     if(result.length>=4)break;
-    if(!p.phenotype||!p.consult||/No .+ alleles/i.test(p.phenotype))continue;
-    // PGx data needs clear genotypes rather than a tentative panel tag.
+    if(p.gene!=='CYP2C19'||p.phenotype!=='CYP2C19 intermediate metabolizer'||!p.consult)continue;
     const relevant=r.variants.filter(v=>v.gene&&p.gene.split('/').includes(v.gene));
-    if(!relevant.length||!relevant.every(v=>v.called)||p.gene==='HCP5')continue;
+    // No genotype or insufficient PGx coverage is not a clear opening highlight.
+    if(!relevant.length||!relevant.every(v=>v.called)||relevant.some(v=>v.no_call_reason==='low_coverage'||v.no_call_reason==='insufficient_evidence')||p.gene==='HCP5')continue;
     result.push({icon:'report',title:p.phenotype,text:p.consult,href:'#chapter-medicines'});
   }
   const ancestry=r.sample_checks?.ancestry?.[0];
@@ -364,11 +362,11 @@ function printBooklet(data,chapters) {
   const contents=chapters.flatMap(([id,title],i)=>{
     if(['ancestry','clock','limits'].includes(id))return [chapterPage(id,title,i,id==='ancestry'?printAncestry(r):id==='clock'?printClock(r):printLimits(r))];
     const groups=chunks(id==='medicines'?r.pgx:r.traits.filter(t=>id==='body'?t.section==='trait':id==='health'?t.section==='health':['carrier','cancer'].includes(t.section)),id==='medicines'?3:6);
-    return groups.map((group,part)=>chapterPage(id,title,i,id==='medicines'?printMedicines(group):`<div class="print-card-grid">${group.map(card).join('')}</div>`,part+1,groups.length));
+    return groups.map((group,part)=>chapterPage(id,title,i,`<div class="print-card-grid">${id==='medicines'?printMedicines(group):group.map(card).join('')}</div>`,part+1,groups.length));
   });
   const rows=r.variants.map(v=>{const e=effectCopy(v),f=v.evidence[0]||{};return `<tr><td>${safe(v.gene)}<br><b>${safe(v.rsid)}</b></td><td>${safe(genotype(v))}</td><td>${number.format(v.ref_votes)} / ${number.format(v.alt_votes.reduce((a,b)=>a+b,0))}</td><td>${number.format(v.depth)}</td><td>${safe(v.gq)}</td><td>${safe(e.label)}${e.verified?`<br>${e.dosage??0} copies`:''}</td><td>${safe(findingEffect(f)||'—')}${f.pmid?`<br>PMID ${safe(String(f.pmid).replace(/^PMID:/,''))}`:''}</td></tr>`;});
   const tablePages=chunks(rows,18).map((group,i)=>`<section class="print-page print-table-page"><header class="print-running"><span>HELIXSCAN / EVIDENCE APPENDIX</span><span>VARIANTS ${i*18+1}–${i*18+group.length} / ${rows.length}</span></header><h2>Every marker, with its evidence.</h2><p class="print-intro">Genotypes, supporting reads and returned published effects. Unclear effect alleles are not counted.</p><table class="print-table"><thead><tr><th>Gene / marker</th><th>Genotype</th><th>Ref / alt</th><th>Depth</th><th>GQ</th><th>Effect allele</th><th>Published effect / source</th></tr></thead><tbody>${group.join('')}</tbody></table><footer><span>Research and education only · not a medical diagnosis.</span><span>APPENDIX A · ${i+1}</span></footer></section>`).join('');
-  const detailCards=r.traits.filter(t=>t.evidence.length).sort((a,b)=>strongest(a)-strongest(b)).map(t=>`<article class="print-evidence-card"><h3>${safe(t.trait_group)}</h3><span>${t.evidence.length} returned findings · strongest by p-value</span>${findingList(t.evidence,2)}</article>`).join('');
+  const detailCards=r.traits.filter(t=>t.evidence.length).sort((a,b)=>strongest(a)-strongest(b)).map(t=>`<article class="print-evidence-card"><h3>${safe(t.trait_group)}</h3><span>${t.evidence.length} returned findings · strongest by p-value</span>${findingList(t.evidence,2)}</article>`);
   const depth={};for(const v of r.variants)depth[v.gene]=Math.max(depth[v.gene]||0,v.depth);const entries=Object.entries(depth).sort((a,b)=>b[1]-a[1]).slice(0,8),max=Math.max(...entries.map(e=>e[1]),1);
   const evidencePages=chunks(detailCards,4).map((group,i)=>`<section class="print-page print-depth"><header class="print-running"><span>HELIXSCAN / EVIDENCE GUIDE</span><span>READ SUPPORT & SOURCES</span></header><div class="print-heading"><span>A</span><div><h2>The evidence, one layer deeper.</h2><p>Read depth describes support for a genotype call. Published findings provide context, not a diagnosis.</p></div></div>${i===0?`<div class="print-depth-bars">${entries.map(([g,d])=>`<div><span>${safe(g)}</span><i><b style="width:${d/max*100}%"></b></i><strong>${number.format(d)}</strong></div>`).join('')}</div>`:''}<div class="print-evidence-grid">${group.join('')}</div><footer><span>Full evidence remains available in the interactive report and exported JSON.</span><span>APPENDIX A · SOURCES ${i+1}</span></footer></section>`).join('');
   return `<article id="print-booklet" class="print-booklet" aria-label="Printable HelixScan booklet"><section class="print-page print-cover"><div class="print-cover-art"><img class="print-cover-image" src="/art/08-cover.webp" alt=""><canvas id="print-fingerprint" aria-label="Unique genotype fingerprint" width="600" height="600"></canvas><span>A FINGERPRINT DRAWN FROM YOUR GENOTYPE CALLS</span></div><div class="print-cover-copy"><span class="print-kicker">HELIXSCAN · RESEARCH REPORT</span><h1>Your DNA,<br>in focus.</h1><p>A personal reading of a small set of your markers—and a clear view of what they cannot tell you.</p><div class="print-highlights">${personalHighlights(r).map(h=>`<article><span>${safe(h.title)}</span><p>${safe(h.text)}</p></article>`).join('')}</div><dl><dt>Read</dt><dd>${new Date().toLocaleDateString(undefined,{year:'numeric',month:'long',day:'numeric'})}</dd><dt>Panel</dt><dd>${called} of ${r.variants.length} focused markers called</dd></dl><p class="print-disclaimer">${safe(r.disclaimer)}</p></div><footer><span>YOUR GENOME, IN FOCUS</span><span>READING YOUR DNA · 01</span></footer></section><section class="print-page print-quality"><header class="print-running"><span>HELIXSCAN / BEFORE YOU READ</span><span>RUN QUALITY</span></header><div class="print-heading"><span>Q</span><div><h2>A clear read starts with the evidence.</h2><p>These are observations about the sequencing run and focused panel, not measurements of health.</p></div></div><div class="print-quality-grid">${sampleStats(r)}</div><div class="print-sample-note"><span>GENETIC-SEX MARKERS</span><h3>${safe(r.sample_checks.sex.classification)}</h3><p>${safe(r.sample_checks.sex.evidence)}</p><small>Y ${r.sample_checks.sex.y_reads_per_million.toFixed(2)} / million · control ${r.sample_checks.sex.control_reads_per_million.toFixed(2)} / million</small></div><div class="print-telomere-note"><span>TELOMERE · ROUGH RESEARCH INDEX</span><h3>${r.sample_checks.telomere.length_adjusted_index.toFixed(3)}</h3><p>${number.format(r.sample_checks.telomere.telomeric_reads)} telomeric reads · ${r.sample_checks.telomere.reads_per_million.toFixed(2)} reads per million</p><small>${safe(r.sample_checks.telomere.message)}</small></div><footer><span>Research and education only · not a medical diagnosis.</span><span>RUN QUALITY · 02</span></footer></section>${contents.join('')}${evidencePages}${tablePages}</article>`;
@@ -376,7 +374,7 @@ function printBooklet(data,chapters) {
 function strongest(t){return Math.min(...t.evidence.map(f=>Number.parseFloat(f.p_value||'Infinity')));}
 function chunks(items,n){const result=[];for(let i=0;i<items.length;i+=n)result.push(items.slice(i,i+n));return result;}
 function printAncestry(r){return `<div class="print-ancestry"><p>${safe(r.sample_checks.ancestry_summary)}</p>${r.sample_checks.ancestry.map((a,i)=>`<div><span>${safe(a.population)}${i===0?' · closest reference':''}</span><i><b style="width:${Math.max(4,100-a.difference/Math.max(r.sample_checks.ancestry.at(-1).difference,1)*95)}%"></b></i><small>LL ${a.log_likelihood.toFixed(2)}<br>Δ ${a.difference.toFixed(2)} · ${a.markers} markers</small></div>`).join('')}<aside><h3>Similarity is not identity.</h3><p>A statistical comparison of these ${r.sample_checks.ancestry[0]?.markers||'returned'} markers cannot establish ethnicity, identity or your complete family history.</p></aside></div>`;}
-function printMedicines(r){return `<div class="print-medicines">${r.pgx.map(p=>`<article><span>${safe(p.gene)}</span><h3>${safe(p.phenotype)}</h3><p>${safe(p.consult)}</p><small>Discuss this pharmacogenetic interpretation with your doctor or pharmacist before treatment decisions.</small></article>`).join('')}</div>`;}
+function printMedicines(items){return `<div class="print-medicines">${items.map(p=>`<article><span>${safe(p.gene)}</span><h3>${safe(p.phenotype)}</h3><p>${safe(p.consult)}</p><small>Discuss this pharmacogenetic interpretation with your doctor or pharmacist before treatment decisions.</small></article>`).join('')}</div>`;}
 function printClock(r){const t=r.sample_checks.telomere,pct=Math.max(0,Math.min(100,t.length_adjusted_index*100));return `<div class="print-clock"><div class="print-gauge"><span>Length-adjusted index</span><strong>${t.length_adjusted_index.toFixed(3)}</strong><i><b style="width:${pct}%"></b></i><small>ROUGH RESEARCH INDEX · NOT AN AGE</small></div><div><h3>A signal,<br>not a birthday.</h3><p>${safe(t.message)}</p><dl><dt>Telomeric reads</dt><dd>${number.format(t.telomeric_reads)}</dd><dt>Reads per million</dt><dd>${t.reads_per_million.toFixed(2)}</dd></dl></div></div>`;}
 function printLimits(r){return `<div class="print-limits"><blockquote>This is a small, focused window into your DNA. It cannot describe every part of you, or predict your future.</blockquote><div>${r.limitations.map((x,i)=>`<article><span>${String(i+1).padStart(2,'0')}</span><h3>${safe(x)}</h3><p>Not established by this focused panel. Clinical questions belong with a qualified clinician.</p></article>`).join('')}</div><p>For carrier or cancer findings, confirm with a clinical test and speak with a genetic counselor before making health decisions.</p></div>`;}
 function readableAmount(bases) {
@@ -390,7 +388,7 @@ function readableDuration(seconds) {
   if(total>=60){const minutes=Math.round(total/60);return `${minutes} ${minutes===1?'minute':'minutes'}`;}
   const rounded=Math.round(total);return `${rounded} ${rounded===1?'second':'seconds'}`;
 }
-window.helixscanReportTest={readableDuration};
+window.helixscanReportTest={personalHighlights,readableDuration};
 function drawFingerprint(variants,canvas) {
   canvas=canvas||document.getElementById('genome-fingerprint');if(!canvas)return;
   const ctx=canvas.getContext('2d'),w=canvas.width,h=canvas.height,cx=w/2,cy=h/2;

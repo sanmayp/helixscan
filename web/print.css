@@ -39,3 +39,6 @@
 @media print{
  .print-highlights{display:grid;gap:2mm;margin:5mm 0 6mm}.print-highlights article{border-left:.7mm solid #00cbd1;padding:2mm 3mm;background:#0c2933}.print-highlights span{font-size:8pt;line-height:1.25;color:#e4f5f6}.print-highlights p{font-size:6.5pt!important;line-height:1.45!important;margin:1mm 0 0!important;color:#abc5cd!important}.print-cover-copy h1{margin:11mm 0 6mm}.print-cover-copy dl{padding-top:3mm}.print-cover-copy .print-disclaimer{margin-top:5mm}
 }
+@media print{
+ .print-chapter-medicines .print-card-grid:has(.print-medicines){display:block}.print-chapter-medicines .print-medicines{display:grid}
+}
