@@ -63,8 +63,8 @@ fn main() -> Result<()> {
             stats
                 .as_ref()
                 .map_or("-".into(), |s| s.workgroup.to_string()),
-            if backend == Backend::Auto && selection.fallback_reason.is_none() {
-                "CPU selected without GPU trial"
+            if backend == Backend::Auto && selection.decision_reason.is_some() {
+                "CPU selected after a lightweight adapter probe; no GPU trial"
             } else {
                 selection.fallback_reason.as_deref().unwrap_or("kept GPU")
             }

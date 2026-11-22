@@ -15,10 +15,12 @@ use std::{
     time::Instant,
 };
 
-/// The P5000's measured 45.691 s GPU transfer/matching/readback time versus
-/// 1.320 s of complete CPU work on demo-1gb.fastq (11 workers) is too large
-/// for calibration to repay. Forced GPU mode still verifies real GPU results.
-const AUTO_CPU_POLICY: &str = "auto: CPU; Quadro P5000 measured 45.691s vs CPU 1.320s on demo-1gb.fastq (11 workers); CPU faster because GPU batch transfers + readback cost dominates; no GPU trial; use --backend gpu to benchmark";
+/// A P5000 forced-GPU process took 48.135641 s versus 47.199051 s for the
+/// previous auto and 1.330122 s for CPU on demo-1gb.fastq (11 workers). The
+/// 45.691 s GPU candidate alone could not repay its transfers/readback. Only
+/// this measured card uses the quick policy; other NVIDIA cards still get a
+/// full auto comparison. Forced GPU always verifies its biological result.
+const AUTO_CPU_POLICY: &str = "auto: CPU because measured on this Quadro P5000; forced GPU 48.135641s vs CPU 1.330122s on demo-1gb.fastq (11 workers), batch transfers + readback dominate; no GPU scan/calibration trial; use --backend gpu to benchmark";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Backend {
@@ -33,6 +35,8 @@ pub struct Selection {
     pub gpu_device: Option<String>,
     pub gpu_stats: Option<crate::GpuStats>,
     pub fallback_reason: Option<String>,
+    /// Operational explanation, including a fast CPU decision before a scan.
+    pub decision_reason: Option<String>,
 }
 impl Selection {
     pub fn cpu(result: ScanResult) -> Self {
@@ -41,6 +45,18 @@ impl Selection {
             gpu_device: None,
             gpu_stats: None,
             fallback_reason: None,
+            decision_reason: None,
+        }
+    }
+    /// This measured model always selects CPU in auto without a GPU trial.
+    fn cpu_policy(mut result: ScanResult, reason: &'static str) -> Self {
+        result.engine = format!("{}; {reason}", result.engine);
+        Self {
+            result,
+            gpu_device: Some("Quadro P5000".into()),
+            gpu_stats: None,
+            fallback_reason: None,
+            decision_reason: Some(reason.into()),
         }
     }
     fn fallback(
@@ -54,6 +70,7 @@ impl Selection {
             gpu_device: device,
             gpu_stats: stats,
             fallback_reason: Some(reason),
+            decision_reason: None,
         }
     }
 }
@@ -67,13 +84,15 @@ pub fn scan_path(
     config: crate::GpuConfig,
 ) -> Result<Selection> {
     let simd = helixscan_core::encode::runtime();
-    if matches!(backend, Backend::Cpu | Backend::Auto) {
-        let mut result =
+    if backend == Backend::Cpu {
+        return Ok(Selection::cpu(helixscan_core::scan::scan_path_with_simd(
+            path, panel, threads, progress, simd,
+        )?));
+    }
+    if backend == Backend::Auto && crate::measured_slow_p5000(config.gpu_index) {
+        let result =
             helixscan_core::scan::scan_path_with_simd(path, panel, threads, progress, simd)?;
-        if backend == Backend::Auto {
-            result.engine = format!("{}; {AUTO_CPU_POLICY}", result.engine);
-        }
-        return Ok(Selection::cpu(result));
+        return Ok(Selection::cpu_policy(result, AUTO_CPU_POLICY));
     }
     let cpu = helixscan_core::scan::scan_path_with_simd(path, panel, threads, progress, simd)?;
     let cpu_elapsed = cpu.elapsed_seconds;
@@ -162,6 +181,7 @@ pub fn scan_path(
         gpu_device: Some(stats.device.clone()),
         gpu_stats: Some(stats),
         fallback_reason: None,
+        decision_reason: None,
     })
 }
 
@@ -366,19 +386,29 @@ mod tests {
         };
         assert!(scan_path(&path, &panel, 1, None, Backend::Gpu, config.clone()).is_err());
         let auto = scan_path(&path, &panel, 1, None, Backend::Auto, config).unwrap();
-        assert!(auto.fallback_reason.is_none());
-        assert!(auto.result.engine.contains("no GPU trial"));
+        assert!(auto.decision_reason.is_none());
         assert!(auto.gpu_device.is_none());
+        assert!(
+            auto.fallback_reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("unavailable"))
+        );
         assert_eq!(auto.result.qc.reads, 6500);
     }
     #[test]
-    fn auto_uses_the_measured_cpu_policy_without_a_gpu_trial() {
-        let path = root().join("testdata/small.fastq");
-        let selection =
-            scan_path(&path, &panel(), 2, None, Backend::Auto, Default::default()).unwrap();
+    fn measured_cpu_policy_has_an_explicit_operational_reason() {
+        let result = helixscan_core::scan::scan_path(
+            &root().join("testdata/small.fastq"),
+            &panel(),
+            2,
+            None,
+        )
+        .unwrap();
+        let selection = Selection::cpu_policy(result, AUTO_CPU_POLICY);
         assert!(selection.result.engine.contains(AUTO_CPU_POLICY));
+        assert_eq!(selection.decision_reason.as_deref(), Some(AUTO_CPU_POLICY));
+        assert_eq!(selection.gpu_device.as_deref(), Some("Quadro P5000"));
         assert!(selection.fallback_reason.is_none());
-        assert!(selection.gpu_device.is_none());
         assert!(selection.gpu_stats.is_none());
     }
     #[test]
