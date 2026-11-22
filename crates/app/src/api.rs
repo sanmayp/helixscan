@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     convert::Infallible,
-    fs,
+    fs, io,
     path::PathBuf,
     sync::{Arc, Mutex},
     time::Instant,
@@ -45,6 +45,9 @@ fn completed_hits(report: &JobReport) -> Vec<Hit> {
 use tokio::sync::watch;
 use uuid::Uuid;
 
+const UPLOAD_WRITE_SIZE: usize = 1024 * 1024;
+const DEFAULT_UPLOAD_LIMIT: u64 = 64 * 1024 * 1024 * 1024;
+
 const INDEX: &str = include_str!("../../../web/index.html");
 const APP_JS: &str = include_str!("../../../web/app.js");
 const HELIX_JS: &str = include_str!("../../../web/helix.js");
@@ -64,6 +67,7 @@ pub struct AppState {
     input_dir: Arc<PathBuf>,
     store_dir: Arc<PathBuf>,
     threads: usize,
+    upload_limit: u64,
 }
 #[derive(Clone)]
 struct Job {
@@ -137,6 +141,23 @@ pub fn router(
     store_dir: PathBuf,
     threads: usize,
 ) -> anyhow::Result<Router> {
+    router_with_upload_limit(
+        panel_path,
+        input_dir,
+        store_dir,
+        threads,
+        DEFAULT_UPLOAD_LIMIT,
+    )
+}
+
+pub fn router_with_upload_limit(
+    panel_path: PathBuf,
+    input_dir: PathBuf,
+    store_dir: PathBuf,
+    threads: usize,
+    upload_limit: u64,
+) -> anyhow::Result<Router> {
+    anyhow::ensure!(upload_limit > 0, "upload limit must be positive");
     fs::create_dir_all(&store_dir)?;
     let panel = load_panel(&panel_path)?;
     let state = AppState {
@@ -149,6 +170,7 @@ pub fn router(
         input_dir: Arc::new(input_dir),
         store_dir: Arc::new(store_dir),
         threads,
+        upload_limit,
     };
     Ok(Router::new()
         .route("/", get(index))
@@ -163,7 +185,10 @@ pub fn router(
         .route("/api/panel", get(panel_summary))
         .route("/api/telemetry", get(telemetry))
         .route("/api/files", get(files))
-        .route("/api/uploads", post(upload))
+        .route(
+            "/api/uploads",
+            post(upload).layer(DefaultBodyLimit::disable()),
+        )
         .route("/api/scans", post(create_scan))
         .route("/api/scans/{id}", get(scan_snapshot))
         .route("/api/scans/{id}/events", get(events))
@@ -174,6 +199,25 @@ pub fn router(
         .route("/api/scans/{id}/report.html", get(report_html))
         .with_state(state)
         .layer(DefaultBodyLimit::max(8 * 1024 * 1024 * 1024)))
+}
+
+struct TemporaryUpload {
+    path: PathBuf,
+    persisted: bool,
+}
+impl TemporaryUpload {
+    fn persist(mut self, destination: &std::path::Path) -> io::Result<()> {
+        fs::rename(&self.path, destination)?;
+        self.persisted = true;
+        Ok(())
+    }
+}
+impl Drop for TemporaryUpload {
+    fn drop(&mut self) {
+        if !self.persisted {
+            let _ = fs::remove_file(&self.path);
+        }
+    }
 }
 
 async fn app_js() -> impl axum::response::IntoResponse {
@@ -467,6 +511,8 @@ async fn upload(
     State(state): State<AppState>,
     mut multipart: Multipart,
 ) -> Result<Json<FileEntry>, ApiError> {
+    use tokio::io::AsyncWriteExt;
+
     while let Some(field) = multipart
         .next_field()
         .await
@@ -486,15 +532,53 @@ async fn upload(
         }
         let stored = format!("upload-{}{}", Uuid::new_v4().simple(), original);
         let path = state.input_dir.join(&stored);
-        let bytes = field
-            .bytes()
+        let temporary_path = state
+            .input_dir
+            .join(format!(".upload-{}.tmp", Uuid::new_v4().simple()));
+        // Create synchronously so cancellation cannot leave a racing async open behind.
+        let file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary_path)
+            .map_err(server_error)?;
+        let temporary = TemporaryUpload {
+            path: temporary_path,
+            persisted: false,
+        };
+        let mut output = tokio::fs::File::from_std(file);
+        let mut field = field;
+        let mut buffer = Vec::with_capacity(UPLOAD_WRITE_SIZE);
+        let mut size = 0_u64;
+        while let Some(chunk) = field
+            .chunk()
             .await
-            .map_err(|e| ApiError(StatusCode::BAD_REQUEST, format!("upload read failed: {e}")))?;
-        fs::write(&path, &bytes).map_err(server_error)?;
-        return Ok(Json(FileEntry {
-            name: stored,
-            size: bytes.len() as u64,
-        }));
+            .map_err(|e| ApiError(StatusCode::BAD_REQUEST, format!("upload read failed: {e}")))?
+        {
+            let chunk_size = chunk.len() as u64;
+            if chunk_size > state.upload_limit - size {
+                return Err(ApiError(
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    format!("upload exceeds the {} byte limit", state.upload_limit),
+                ));
+            }
+            size += chunk_size;
+            let mut remaining = chunk.as_ref();
+            while !remaining.is_empty() {
+                let available = UPLOAD_WRITE_SIZE - buffer.len();
+                let count = available.min(remaining.len());
+                buffer.extend_from_slice(&remaining[..count]);
+                remaining = &remaining[count..];
+                if buffer.len() == UPLOAD_WRITE_SIZE {
+                    output.write_all(&buffer).await.map_err(server_error)?;
+                    buffer.clear();
+                }
+            }
+        }
+        output.write_all(&buffer).await.map_err(server_error)?;
+        output.flush().await.map_err(server_error)?;
+        drop(output);
+        temporary.persist(&path).map_err(server_error)?;
+        return Ok(Json(FileEntry { name: stored, size }));
     }
     Err(ApiError(StatusCode::BAD_REQUEST, "no file field".into()))
 }

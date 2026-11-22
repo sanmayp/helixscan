@@ -5,6 +5,139 @@ use axum::{
 use helixscan_app::api::router;
 use tower::ServiceExt;
 
+const UPLOAD_WRITE_SIZE: usize = 1024 * 1024;
+
+struct UploadTestDir {
+    root: std::path::PathBuf,
+    input: std::path::PathBuf,
+}
+impl UploadTestDir {
+    fn new() -> Self {
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/upload-tests")
+            .join(uuid::Uuid::new_v4().simple().to_string());
+        let input = root.join("input");
+        std::fs::create_dir_all(&input).unwrap();
+        Self { root, input }
+    }
+    fn app(&self, limit: u64) -> axum::Router {
+        helixscan_app::api::router_with_upload_limit(
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/panel.json"),
+            self.input.clone(),
+            self.root.join("store"),
+            1,
+            limit,
+        )
+        .unwrap()
+    }
+    fn files(&self) -> Vec<std::ffi::OsString> {
+        std::fs::read_dir(&self.input)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect()
+    }
+}
+impl Drop for UploadTestDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.root);
+    }
+}
+
+fn multipart_prefix(filename: &str) -> Vec<u8> {
+    format!(
+        "--helixscan-upload\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\nContent-Type: application/octet-stream\r\n\r\n"
+    )
+    .into_bytes()
+}
+fn multipart_body(filename: &str, contents: &[u8]) -> Vec<u8> {
+    let mut body = multipart_prefix(filename);
+    body.extend_from_slice(contents);
+    body.extend_from_slice(b"\r\n--helixscan-upload--\r\n");
+    body
+}
+fn upload_request(body: Body) -> Request<Body> {
+    Request::post("/api/uploads")
+        .header(
+            header::CONTENT_TYPE,
+            "multipart/form-data; boundary=helixscan-upload",
+        )
+        .body(body)
+        .unwrap()
+}
+
+#[tokio::test]
+async fn streamed_upload_writes_contents_larger_than_the_buffer() {
+    let dir = UploadTestDir::new();
+    let app = dir.app(4 * UPLOAD_WRITE_SIZE as u64);
+    let expected = (0..2 * UPLOAD_WRITE_SIZE + 37)
+        .map(|index| (index % 251) as u8)
+        .collect::<Vec<_>>();
+    let body = multipart_body("reads.fastq", &expected);
+    let stream = async_stream::stream! {
+        for chunk in body.chunks(9973) {
+            yield Ok::<Vec<u8>, std::io::Error>(chunk.to_vec());
+        }
+    };
+    let response = app
+        .oneshot(upload_request(Body::from_stream(stream)))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let entry: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap()).unwrap();
+    assert_eq!(entry["size"], expected.len());
+    let name = entry["name"].as_str().unwrap();
+    assert_eq!(std::fs::read(dir.input.join(name)).unwrap(), expected);
+}
+
+#[tokio::test]
+async fn too_large_upload_is_rejected_without_a_file() {
+    let dir = UploadTestDir::new();
+    let app = dir.app(UPLOAD_WRITE_SIZE as u64);
+    let body = multipart_body("reads.fastq", &vec![b'x'; UPLOAD_WRITE_SIZE + 1]);
+    let response = app.oneshot(upload_request(Body::from(body))).await.unwrap();
+    assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    assert!(dir.files().is_empty(), "{:?}", dir.files());
+}
+
+#[tokio::test]
+async fn cancelled_upload_removes_its_partial_temporary_file() {
+    let dir = UploadTestDir::new();
+    let app = dir.app(4 * UPLOAD_WRITE_SIZE as u64);
+    let mut partial = multipart_prefix("reads.fastq");
+    partial.extend(vec![b'x'; UPLOAD_WRITE_SIZE + 7]);
+    let stream = async_stream::stream! {
+        yield Ok::<Vec<u8>, std::io::Error>(partial);
+        std::future::pending::<()>().await;
+    };
+    let request = app.oneshot(upload_request(Body::from_stream(stream)));
+    let pending = tokio::spawn(async move { request.await.unwrap() });
+    for _ in 0..100 {
+        if !dir.files().is_empty() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    assert_eq!(dir.files().len(), 1, "temporary upload was not started");
+    pending.abort();
+    let error = pending.await.unwrap_err();
+    assert!(error.is_cancelled());
+    assert!(dir.files().is_empty(), "{:?}", dir.files());
+}
+
+#[tokio::test]
+async fn upload_rejects_an_unsafe_filename_without_a_file() {
+    let dir = UploadTestDir::new();
+    let body = multipart_body("../private.fastq", b"@read\nAC\n+\nII\n");
+    let response = dir
+        .app(UPLOAD_WRITE_SIZE as u64)
+        .oneshot(upload_request(Body::from(body)))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert!(dir.files().is_empty());
+}
+
 #[tokio::test]
 async fn cpu_scan_streams_sse_and_persists_report() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");

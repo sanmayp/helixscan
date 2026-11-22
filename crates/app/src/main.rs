@@ -42,6 +42,8 @@ enum Command {
         store_dir: PathBuf,
         #[arg(long, default_value_t = 11)]
         threads: usize,
+        #[arg(long, default_value_t = 64)]
+        max_upload_gib: u64,
     },
     Bench {
         input: PathBuf,
@@ -92,11 +94,24 @@ fn main() -> Result<()> {
             input_dir,
             store_dir,
             threads,
+            max_upload_gib,
         } => {
             if bind != "127.0.0.1" && bind != "0.0.0.0" {
                 anyhow::bail!("--bind must be 127.0.0.1 or 0.0.0.0");
             }
-            let router = helixscan_app::api::router(panel, input_dir, store_dir, threads)?;
+            let upload_limit = max_upload_gib
+                .checked_mul(1024 * 1024 * 1024)
+                .filter(|limit| *limit > 0)
+                .ok_or_else(|| {
+                    anyhow::anyhow!("--max-upload-gib must be between 1 and 16777216")
+                })?;
+            let router = helixscan_app::api::router_with_upload_limit(
+                panel,
+                input_dir,
+                store_dir,
+                threads,
+                upload_limit,
+            )?;
             tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .build()?
