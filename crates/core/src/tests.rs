@@ -18,6 +18,9 @@ pub fn variant(rsid: &str, reference: &str, alt: &str) -> Variant {
         flank_left: "ACGTTGCA".repeat(8),
         flank_right: "TGCACGTA".repeat(8),
         phenotypes: vec![],
+        effect_allele: None,
+        effect_allele_status: helixscan_panel::EffectAlleleStatus::Unclear,
+        effect_findings: vec![],
         clinical_significance: vec![],
         frequencies: Default::default(),
         fetched_at: "test".into(),
@@ -413,6 +416,27 @@ fn pgx_low_coverage_is_not_a_normal_call() {
     let call = crate::genotype::call(&panel.variants[0], &[0; 4], "unclear");
     let output = crate::pgx::pgx_interpretations(&panel, &[call]);
     assert!(output[0].phenotype.contains("could not be evaluated"));
+}
+
+#[test]
+fn real_panel_tcf7l2_effect_allele_is_t_and_unclear_never_counts_copies() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let p: crate::Panel =
+        serde_json::from_reader(std::fs::File::open(root.join("data/panel.json")).unwrap())
+            .unwrap();
+    let v = p.variants.iter().find(|v| v.rsid == "rs7903146").unwrap();
+    assert_eq!(v.alts, ["G", "T"]);
+    let call = crate::genotype::call(v, &[0, 0, 20, 0], "XX");
+    assert_eq!(call.risk_allele.as_deref(), Some("T"));
+    assert_eq!(call.dosage, Some(2));
+    assert_eq!(call.genotype, "T/T");
+
+    let mut unclear = v.clone();
+    unclear.effect_allele_status = helixscan_panel::EffectAlleleStatus::Unclear;
+    let call = crate::genotype::call(&unclear, &[0, 0, 20, 0], "XX");
+    assert_eq!(call.risk_allele, None);
+    assert_eq!(call.dosage, None);
+    assert_eq!(call.genotype, "T/T");
 }
 
 #[test]

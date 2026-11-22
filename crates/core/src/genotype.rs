@@ -9,6 +9,8 @@ pub struct GenotypeCall {
     pub ref_votes: u32,
     pub alt_votes: Vec<u32>,
     pub risk_allele: Option<String>,
+    #[serde(default)]
+    pub effect_allele_status: helixscan_panel::EffectAlleleStatus,
     pub reference_allele: String,
     pub called: bool,
     pub no_call_reason: Option<String>,
@@ -60,7 +62,11 @@ pub fn call(v: &helixscan_panel::Variant, counts: &[u32; 4], sex: &str) -> Genot
         .collect::<Vec<_>>();
     let a = alts.iter().sum::<u32>();
     let d = r + a;
-    let risk = v.phenotypes.iter().find_map(|p| p.risk_allele.clone());
+    let risk = if v.effect_allele_status == helixscan_panel::EffectAlleleStatus::Supported {
+        v.effect_allele.clone()
+    } else {
+        None
+    };
     let mut base = GenotypeCall {
         rsid: v.rsid.clone(),
         genotype: "no call".into(),
@@ -70,6 +76,7 @@ pub fn call(v: &helixscan_panel::Variant, counts: &[u32; 4], sex: &str) -> Genot
         ref_votes: r,
         alt_votes: alts.clone(),
         risk_allele: risk,
+        effect_allele_status: v.effect_allele_status.clone(),
         reference_allele: v.ref_allele.clone(),
         called: false,
         no_call_reason: Some("low coverage".into()),
