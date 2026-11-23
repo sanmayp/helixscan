@@ -50,6 +50,9 @@ pub struct GenotypeCall {
     pub dosage: Option<u8>,
     pub depth: u32,
     pub gq: u8,
+    /// Confidence in this genotype call, derived only from depth and GQ.
+    #[serde(default = "default_confidence")]
+    pub confidence: String,
     pub ref_votes: u32,
     pub alt_votes: Vec<u32>,
     pub risk_allele: Option<String>,
@@ -72,6 +75,9 @@ pub struct GenotypeCall {
     /// None means no public effect-allele frequencies for this variant.
     #[serde(default)]
     pub population_frequencies: Option<Vec<Option<PopulationFrequency>>>,
+}
+fn default_confidence() -> String {
+    "low".into()
 }
 fn dose(c: &GenotypeCall, allele: &str, v: &helixscan_panel::Variant) -> u8 {
     let i = if allele == v.ref_allele {
@@ -126,6 +132,7 @@ pub fn call(v: &helixscan_panel::Variant, counts: &[u32; 4], sex: &str) -> Genot
         dosage: None,
         depth: d,
         gq: 0,
+        confidence: call_confidence(d, 0, false).into(),
         ref_votes: r,
         alt_votes: alts.clone(),
         risk_allele: risk,
@@ -147,6 +154,7 @@ pub fn call(v: &helixscan_panel::Variant, counts: &[u32; 4], sex: &str) -> Genot
         }
         base.called = true;
         base.no_call_reason = None;
+        base.confidence = call_confidence(d, 0, true).into();
         base.heteroplasmy = Some(a as f64 / d as f64 * 100.0);
         let best = (0..alts.len()).max_by_key(|i| alts[*i]).unwrap_or(0);
         base.genotype = if r > alts[best] {
@@ -201,6 +209,7 @@ pub fn call(v: &helixscan_panel::Variant, counts: &[u32; 4], sex: &str) -> Genot
         .clamp(0.0, 99.0) as u8;
     base.called = true;
     base.no_call_reason = None;
+    base.confidence = call_confidence(d, base.gq, true).into();
     if sex == "XY" && (v.chr == "X" || v.chr == "Y") {
         let best_alt = (0..alts.len()).max_by_key(|i| alts[*i]).unwrap_or(0);
         let alt = &v.alts[best_alt];
@@ -218,6 +227,7 @@ pub fn call(v: &helixscan_panel::Variant, counts: &[u32; 4], sex: &str) -> Genot
     } else {
         base.genotype = format!("{}/{}", allele(best.1), allele(best.2));
     }
+    base.confidence = call_confidence(d, base.gq, true).into();
     if sex == "XY" && (v.chr == "X" || v.chr == "Y") {
         base.dosage = base
             .risk_allele
@@ -240,6 +250,18 @@ pub fn call(v: &helixscan_panel::Variant, counts: &[u32; 4], sex: &str) -> Genot
         base.dosage = base.risk_allele.as_ref().map(|risk| dose(&base, risk, v));
     }
     base
+}
+
+/// Read depth establishes whether a call can be made; GQ then distinguishes
+/// high from medium confidence. No-call labels never imply genotype quality.
+pub fn call_confidence(depth: u32, gq: u8, called: bool) -> &'static str {
+    if !called || depth < 8 {
+        "low"
+    } else if depth >= 20 && gq >= 30 {
+        "high"
+    } else {
+        "medium"
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

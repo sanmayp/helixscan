@@ -617,3 +617,30 @@ fn curated_health_summary_names_its_source_not_ensembl_gwas() {
     assert!(message.contains("effect-marker copy/copies"));
     assert!(!message.contains("in Ensembl evidence"));
 }
+
+#[test]
+fn confidence_uses_both_depth_and_gq_and_never_upgrades_no_calls() {
+    use crate::genotype::call_confidence;
+    for (depth, gq, called, expected) in [
+        (0, 0, false, "low"),
+        (100, 99, false, "low"),
+        (7, 99, true, "low"),
+        (8, 0, true, "medium"),
+        (19, 99, true, "medium"),
+        (20, 29, true, "medium"),
+        (20, 30, true, "high"),
+        (100, 99, true, "high"),
+    ] {
+        assert_eq!(call_confidence(depth, gq, called), expected);
+    }
+
+    let p = panel(variant("rs-confidence", "A", "C"));
+    let high = crate::genotype::call(&p.variants[0], &[20, 0, 0, 0], "XX");
+    assert_eq!(high.confidence, "high");
+    assert_eq!(serde_json::to_value(&high).unwrap()["confidence"], "high");
+    let no_call = crate::genotype::call(&p.variants[0], &[0; 4], "XX");
+    assert_eq!(no_call.confidence, "low");
+    let mixed = crate::genotype::call(&p.variants[0], &[5, 5, 0, 0], "XX");
+    assert!(mixed.called && mixed.depth < 20);
+    assert_eq!(mixed.confidence, "medium");
+}
